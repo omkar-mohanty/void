@@ -8,23 +8,21 @@ use wgpu::{Device, TextureFormat};
 
 use void_core::{Event, System};
 
-use crate::Gui;
-
-pub struct GuiEvent<'a> {
-    gui: &'a mut dyn Gui,
+pub struct GuiRenderEvent {
+    gui_func:Box<dyn FnOnce(&Context)>,
     raw_input: RawInput,
 }
 
-impl Event for GuiEvent<'_> {}
+impl Event for GuiRenderEvent {}
 
 impl System for GuiRenderer {
-    type T = GuiEvent<'static>;
+    type T = GuiRenderEvent;
     type S = ();
     type R = FullOutput;
 
-    fn process_event(&mut self, event: GuiEvent) -> FullOutput {
-        let GuiEvent { gui, raw_input } = event;
-        self.draw(raw_input, gui)
+    fn process_event(&mut self, event: GuiRenderEvent) -> FullOutput {
+        let GuiRenderEvent {  raw_input, gui_func } = event;
+        self.process_input(raw_input, gui_func)
     }
 }
 
@@ -103,9 +101,9 @@ impl GuiRenderer {
         }
     }
 
-    fn draw(&mut self, raw_input: egui::RawInput, gui: &mut dyn Gui) -> egui::FullOutput {
+    fn process_input(&mut self, raw_input: egui::RawInput, gui: Box<dyn FnOnce(&Context)> ) -> egui::FullOutput {
         self.context.run(raw_input, |_ui| {
-            gui.run(&self.context);
+            gui(&self.context);
         })
     }
 }

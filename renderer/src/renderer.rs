@@ -1,16 +1,16 @@
 use std::{collections::HashMap, ops::Deref};
 use void_core::{Event, System, SystemId};
 
-use crate::gui::{GuiEvent, GuiRenderer};
+use crate::gui::{GuiRenderEvent, GuiRenderer};
 
-impl Event for RenderEvent<'_> {
+impl Event for RenderEvent {
     fn system(&self) -> void_core::SystemId {
         SystemId("RenderEngine")
     }
 }
 
-pub enum RenderEvent<'a> {
-    Gui(GuiEvent<'a>),
+pub enum RenderEvent {
+    Gui(GuiRenderEvent),
     Scene,
     Other(Box<dyn Event>),
 }
@@ -23,13 +23,14 @@ pub struct RenderEngine<T: System> {
 impl<A: System> System for RenderEngine<A> {
     type R = ();
     type S = A;
-    type T = RenderEvent<'static>;
+    type T = RenderEvent;
 
     fn process_event(&mut self, event: Self::T) -> Self::R {
         use RenderEvent::*;
         match event {
             Gui(gui_event) => {
-                self.gui_renderer.process_event(gui_event);
+                let full_output = self.gui_renderer.process_event(gui_event);
+                todo!("Process GUI Output");
             }
             Scene => {}
             Other(_event) => {
