@@ -2,6 +2,19 @@ use std::ops::Deref;
 
 use thiserror::Error;
 
+pub trait RenderSystem: System {
+    fn get_id(&self) -> SystemId {
+        SystemId("RenderingSystem")
+    }
+}
+
+pub trait IoSystem: System {
+    fn get_output(&self) -> egui::FullOutput;
+    fn get_id(&self) -> SystemId {
+        SystemId("IoSystem")
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Copy, Hash)]
 pub struct SystemId(pub &'static str);
 
@@ -30,20 +43,21 @@ impl System for () {
     type S = ();
     type R = ();
 
-    fn process_event(&mut self, _event: Self::T) -> Self::R {}
-
-    fn add_subsystem(&mut self, _name: SystemId, _sub_system: Self::S) {}
+    fn process_event(&self, _event: Self::T) -> Self::R {}
 }
 
 pub trait System {
-    type T: Event;
+    type T;
     type S: System;
     type R;
 
-    fn process_event(&mut self, event: Self::T) -> Self::R;
+    fn process_event(&self, _event_processor: Self::T)  {
+    }
     fn add_subsystem(&mut self, _name: SystemId, _sub_system: Self::S) {}
     fn get_id(&self) -> SystemId {
         SystemId::default()
+    }
+    fn update(&mut self) {
     }
 }
 

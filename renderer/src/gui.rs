@@ -9,7 +9,7 @@ use wgpu::{Device, TextureFormat};
 use void_core::{Event, System};
 
 pub struct GuiRenderEvent {
-    gui_func:Box<dyn FnOnce(&Context)>,
+    gui_func: Box<dyn FnOnce(&Context)>,
     raw_input: RawInput,
 }
 
@@ -18,12 +18,7 @@ impl Event for GuiRenderEvent {}
 impl System for GuiRenderer {
     type T = GuiRenderEvent;
     type S = ();
-    type R = FullOutput;
-
-    fn process_event(&mut self, event: GuiRenderEvent) -> FullOutput {
-        let GuiRenderEvent {  raw_input, gui_func } = event;
-        self.process_input(raw_input, gui_func)
-    }
+    type R = ();
 }
 
 pub struct GuiRenderer {
@@ -62,7 +57,7 @@ impl GuiRenderer {
         }
     }
 
-    pub fn update_inner(
+    pub fn update(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -99,11 +94,5 @@ impl GuiRenderer {
         for x in &full_output.textures_delta.free {
             self.renderer.free_texture(x)
         }
-    }
-
-    fn process_input(&mut self, raw_input: egui::RawInput, gui: Box<dyn FnOnce(&Context)> ) -> egui::FullOutput {
-        self.context.run(raw_input, |_ui| {
-            gui(&self.context);
-        })
     }
 }

@@ -10,3 +10,4 @@ egui-winit = "0.26.2"
 egui-wgpu = "0.26.2"
 egui = "0.26.2"
 void_core = { path = "../void_core" }
+tokio = {version = "1.36.0", features = ["sync"]}

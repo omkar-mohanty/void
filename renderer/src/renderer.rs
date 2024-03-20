@@ -1,5 +1,8 @@
-use std::{collections::HashMap, ops::Deref};
-use void_core::{Event, System, SystemId};
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::mpsc::Receiver;
+use void_core::{Event, IoSystem, System, SystemId};
+
+use egui_wgpu::wgpu;
 
 use crate::gui::{GuiRenderEvent, GuiRenderer};
 
@@ -15,31 +18,31 @@ pub enum RenderEvent {
     Other(Box<dyn Event>),
 }
 
-pub struct RenderEngine<T: System> {
+pub struct RenderEngine<T: System, I: IoSystem> {
+    context: egui::Context,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    texture_view: wgpu::TextureView,
     gui_renderer: GuiRenderer,
+    io_system: Arc<I>,
     sub_systems: HashMap<SystemId, T>,
 }
 
-impl<A: System> System for RenderEngine<A> {
+impl<A: System, I: IoSystem> System for RenderEngine<A, I> {
     type R = ();
     type S = A;
-    type T = RenderEvent;
+    type T = Receiver<RenderEvent>;
 
-    fn process_event(&mut self, event: Self::T) -> Self::R {
-        use RenderEvent::*;
-        match event {
-            Gui(gui_event) => {
-                let full_output = self.gui_renderer.process_event(gui_event);
-                todo!("Process GUI Output");
-            }
-            Scene => {}
-            Other(_event) => {
-                todo!()
-            }
-        }
+    fn process_event(&self, mut event: Self::T) -> Self::R {
+        if let Some(event) = event.blocking_recv() {}
     }
 
     fn add_subsystem(&mut self, id: SystemId, system: Self::S) {
         self.sub_systems.insert(id, system);
+    }
+
+    fn update(&mut self) {
+        let _full_output = self.io_system.get_output();
+        todo!()
     }
 }
