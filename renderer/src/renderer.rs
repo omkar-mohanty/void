@@ -34,7 +34,7 @@ impl<A: System, I: IoSystem> System for RenderEngine<A, I> {
     type T = Receiver<RenderEvent>;
 
     fn process_event(&self, mut event: Self::T) -> Self::R {
-        if let Some(event) = event.blocking_recv() {}
+        if let Some(_event) = event.blocking_recv() {}
     }
 
     fn add_subsystem(&mut self, id: SystemId, system: Self::S) {

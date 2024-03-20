@@ -1,5 +1,5 @@
 use egui::epaint::Shadow;
-use egui::{Context, FullOutput, RawInput, Visuals};
+use egui::{Context, RawInput, Visuals};
 use egui_wgpu::wgpu;
 use egui_wgpu::Renderer;
 use egui_wgpu::ScreenDescriptor;
