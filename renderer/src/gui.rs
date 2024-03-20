@@ -1,41 +1,39 @@
 use egui::epaint::Shadow;
-use egui::{Context, Visuals};
+use egui::{Context, FullOutput, RawInput, Visuals};
 use egui_wgpu::wgpu;
 use egui_wgpu::Renderer;
 use egui_wgpu::ScreenDescriptor;
 
-use egui_winit::winit;
-use wgpu::{CommandEncoder, Device, Queue, TextureFormat, TextureView};
-use winit::event::WindowEvent;
-use winit::window::Window;
+use wgpu::{Device, TextureFormat};
 
-use std::result::Result;
-use void_core::{Error, Event, System};
+use void_core::{Event, System};
 
-use crate::{Gui, GuiRenderer};
+use crate::Gui;
 
 pub struct GuiEvent<'a> {
-    window: &'a Window,
-    event: &'a WindowEvent,
+    gui: &'a mut dyn Gui,
+    raw_input: RawInput,
 }
 
 impl Event for GuiEvent<'_> {}
 
-impl System for GuiRendererImpl {
+impl System for GuiRenderer {
     type T = GuiEvent<'static>;
+    type S = ();
+    type R = FullOutput;
 
-    fn process_event(&mut self, event: GuiEvent) -> Result<(), Error> {
-        let GuiEvent { window, event } = event;
-        Ok(())
+    fn process_event(&mut self, event: GuiEvent) -> FullOutput {
+        let GuiEvent { gui, raw_input } = event;
+        self.draw(raw_input, gui)
     }
 }
 
-pub struct GuiRendererImpl {
-    pub context: Context,
+pub struct GuiRenderer {
+    context: Context,
     renderer: Renderer,
 }
 
-impl GuiRendererImpl {
+impl GuiRenderer {
     pub fn new(
         device: &Device,
         output_color_format: TextureFormat,
@@ -43,21 +41,16 @@ impl GuiRendererImpl {
         msaa_samples: u32,
         egui_context: Context,
     ) -> Self {
-        let egui_context = Context::default();
-        let id = egui_context.viewport_id();
-
         const BORDER_RADIUS: f32 = 2.0;
 
         let visuals = Visuals {
             window_rounding: egui::Rounding::same(BORDER_RADIUS),
             window_shadow: Shadow::NONE,
-            // menu_rounding: todo!(),
             ..Default::default()
         };
 
         egui_context.set_visuals(visuals);
 
-        // egui_state.set_pixels_per_point(window.scale_factor() as f32);
         let egui_renderer = egui_wgpu::Renderer::new(
             device,
             output_color_format,
@@ -109,24 +102,10 @@ impl GuiRendererImpl {
             self.renderer.free_texture(x)
         }
     }
-}
 
-impl GuiRenderer for GuiRendererImpl {
     fn draw(&mut self, raw_input: egui::RawInput, gui: &mut dyn Gui) -> egui::FullOutput {
         self.context.run(raw_input, |_ui| {
             gui.run(&self.context);
         })
-    }
-
-    fn update(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        texture_view: &wgpu::TextureView,
-        screen_descriptor: ScreenDescriptor,
-        full_output: egui::FullOutput,
-    ) {
-        self.update_inner(device, queue, encoder, texture_view, screen_descriptor, full_output);
     }
 }
