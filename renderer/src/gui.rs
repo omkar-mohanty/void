@@ -5,13 +5,14 @@ use egui_wgpu::Renderer;
 use egui_wgpu::ScreenDescriptor;
 
 use egui_winit::winit;
-use egui_winit::State;
 use wgpu::{CommandEncoder, Device, Queue, TextureFormat, TextureView};
 use winit::event::WindowEvent;
 use winit::window::Window;
 
 use std::result::Result;
 use void_core::{Error, Event, System};
+
+use crate::{Gui, GuiRenderer};
 
 pub struct GuiEvent<'a> {
     window: &'a Window,
@@ -20,32 +21,28 @@ pub struct GuiEvent<'a> {
 
 impl Event for GuiEvent<'_> {}
 
-pub trait Gui: FnOnce(&Context) {}
-
-impl System for GuiRenderer {
+impl System for GuiRendererImpl {
     type T = GuiEvent<'static>;
 
     fn process_event(&mut self, event: GuiEvent) -> Result<(), Error> {
         let GuiEvent { window, event } = event;
-        self.handle_input(window, event);
         Ok(())
     }
 }
 
-pub struct GuiRenderer {
+pub struct GuiRendererImpl {
     pub context: Context,
-    state: State,
     renderer: Renderer,
 }
 
-impl GuiRenderer {
+impl GuiRendererImpl {
     pub fn new(
         device: &Device,
         output_color_format: TextureFormat,
         output_depth_format: Option<TextureFormat>,
         msaa_samples: u32,
-        window: &Window,
-    ) -> GuiRenderer {
+        egui_context: Context,
+    ) -> Self {
         let egui_context = Context::default();
         let id = egui_context.viewport_id();
 
@@ -60,8 +57,6 @@ impl GuiRenderer {
 
         egui_context.set_visuals(visuals);
 
-        let egui_state = egui_winit::State::new(egui_context.clone(), id, &window, None, None);
-
         // egui_state.set_pixels_per_point(window.scale_factor() as f32);
         let egui_renderer = egui_wgpu::Renderer::new(
             device,
@@ -70,36 +65,21 @@ impl GuiRenderer {
             msaa_samples,
         );
 
-        GuiRenderer {
+        Self {
             context: egui_context,
-            state: egui_state,
             renderer: egui_renderer,
         }
     }
 
-    pub fn handle_input(&mut self, window: &Window, event: &WindowEvent) {
-        let _ = self.state.on_window_event(window, event);
-    }
-
-    pub fn draw(
+    pub fn update_inner(
         &mut self,
-        device: &Device,
-        queue: &Queue,
-        encoder: &mut CommandEncoder,
-        window: &Window,
-        window_surface_view: &TextureView,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        texture_view: &wgpu::TextureView,
         screen_descriptor: ScreenDescriptor,
-        run_ui: impl Gui,
+        full_output: egui::FullOutput,
     ) {
-        // self.state.set_pixels_per_point(window.scale_factor() as f32);
-        let raw_input = self.state.take_egui_input(&window);
-        let full_output = self.context.run(raw_input, |_ui| {
-            run_ui(&self.context);
-        });
-
-        self.state
-            .handle_platform_output(&window, full_output.platform_output);
-
         let tris = self
             .context
             .tessellate(full_output.shapes, full_output.pixels_per_point);
@@ -111,7 +91,7 @@ impl GuiRenderer {
             .update_buffers(&device, &queue, encoder, &tris, &screen_descriptor);
         let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &window_surface_view,
+                view: &texture_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Load,
@@ -128,5 +108,25 @@ impl GuiRenderer {
         for x in &full_output.textures_delta.free {
             self.renderer.free_texture(x)
         }
+    }
+}
+
+impl GuiRenderer for GuiRendererImpl {
+    fn draw(&mut self, raw_input: egui::RawInput, gui: &mut dyn Gui) -> egui::FullOutput {
+        self.context.run(raw_input, |_ui| {
+            gui.run(&self.context);
+        })
+    }
+
+    fn update(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        texture_view: &wgpu::TextureView,
+        screen_descriptor: ScreenDescriptor,
+        full_output: egui::FullOutput,
+    ) {
+        self.update_inner(device, queue, encoder, texture_view, screen_descriptor, full_output);
     }
 }
