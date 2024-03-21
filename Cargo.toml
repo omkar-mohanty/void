@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 
-members = [ "renderer",
+members = [ "hid", "native", "render",
     "void_core",
 ]
 

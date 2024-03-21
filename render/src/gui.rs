@@ -1,25 +1,9 @@
 use egui::epaint::Shadow;
-use egui::{Context, RawInput, Visuals};
-use egui_wgpu::wgpu;
+use egui::{Context, Visuals};
 use egui_wgpu::Renderer;
 use egui_wgpu::ScreenDescriptor;
 
-use wgpu::{Device, TextureFormat};
-
-use void_core::{Event, System};
-
-pub struct GuiRenderEvent {
-    gui_func: Box<dyn FnOnce(&Context)>,
-    raw_input: RawInput,
-}
-
-impl Event for GuiRenderEvent {}
-
-impl System for GuiRenderer {
-    type T = GuiRenderEvent;
-    type S = ();
-    type R = ();
-}
+use wgpu::{self, Device, TextureFormat};
 
 pub struct GuiRenderer {
     context: Context,
