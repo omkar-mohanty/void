@@ -19,8 +19,9 @@ fn init() -> anyhow::Result<(Window, Context)> {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let (window, context) = init()?;
-    let (event_sender, event_receiver) = create_mpsc_channel();
-    let mut render_engine = RenderEngine::new(context, &window, event_receiver, event_sender).await;
+    let (app_event_sender, app_event_receiver) = create_mpsc_channel();
+    let (engine_sender, engine_receiver) = create_mpsc_channel();
+    let mut render_engine = RenderEngine::new(context, &window, app_event_receiver, engine_sender).await;
     let _ = render_engine
         .run(|_app_event| void_render::RenderEvent::PassComplete)
         .await;

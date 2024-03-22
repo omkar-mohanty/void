@@ -3,18 +3,18 @@ use egui::Context;
 use egui_wgpu::wgpu;
 use egui_winit::winit::window::Window;
 use void_core::System;
-use void_native::{MpscSender, NativeEvent, NativeEventReceiver, NativeEventSender};
+use void_native::{MpscSender, NativeEvent, NativeEventReceiver};
 
 use crate::{RenderEngine, RenderEvent};
 
-impl System for RenderEngine<NativeEventSender, NativeEventReceiver, RenderEvent, NativeEvent> {
+impl System for RenderEngine<MpscSender<RenderEvent>, NativeEventReceiver, RenderEvent, NativeEvent> {
     type Sender = MpscSender<RenderEvent>;
     type Receiver = NativeEventReceiver;
     type EventUp = RenderEvent;
     type EventDown = NativeEvent;
 }
 
-impl RenderEngine<NativeEventSender, NativeEventReceiver, RenderEvent, NativeEvent> {
+impl RenderEngine<MpscSender<RenderEvent>, NativeEventReceiver, RenderEvent, NativeEvent>{
     pub async fn new(
         context: Context,
         window: &Window,

@@ -28,10 +28,10 @@ where
 
 pub struct RenderEngine<S, R, U, D>
 where
-    U: Event,
-    D: Event,
     S: EventSender<E = U>,
     R: EventReceiver<E = D>,
+    U: Event,
+    D: Event,
 {
     context: egui::Context,
     device: wgpu::Device,
