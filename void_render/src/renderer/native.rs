@@ -2,18 +2,26 @@ use crate::gui::GuiRenderer;
 use egui::Context;
 use egui_wgpu::wgpu;
 use egui_winit::winit::window::Window;
-use void_core::System;
-use void_native::{MpscSender, NativeEvent, NativeEventReceiver};
+use void_core::{Event, EventListner, Result, System};
+use void_native::{MpscReceiver, MpscSender, NativeEvent, NativeEventReceiver};
 
 use crate::{RenderEngine, RenderEvent};
 
-impl System
-    for RenderEngine<MpscSender<RenderEvent>, NativeEventReceiver, RenderEvent, NativeEvent>
+impl<T: Event + 'static> System
+    for RenderEngine<MpscSender<RenderEvent>, MpscReceiver<T>, RenderEvent, T>
 {
     type Sender = MpscSender<RenderEvent>;
-    type Receiver = NativeEventReceiver;
+    type Receiver = MpscReceiver<T>;
     type EventUp = RenderEvent;
-    type EventDown = NativeEvent;
+    type EventDown = T;
+
+    async fn run(&mut self, func: impl FnOnce(Self::EventDown) -> Self::EventUp) -> Result<()> {
+        let event = self.event_receiver.receieve_event().await?;
+        let render_event = func(event);
+        self.handle_render_event(render_event);
+
+        Ok(())
+    }
 }
 
 impl RenderEngine<MpscSender<RenderEvent>, NativeEventReceiver, RenderEvent, NativeEvent> {

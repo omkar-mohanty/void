@@ -1,5 +1,5 @@
 use egui::Context;
-use void_core::SubSystem;
+use void_core::System;
 use void_native::create_mpsc_channel;
 use void_render::RenderEngine;
 use winit::{

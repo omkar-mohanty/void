@@ -7,4 +7,6 @@ edition = "2021"
 
 [dependencies]
 egui = "0.26.2"
+void_core = {path = "../void_core"}
 
+void_native = {path = "../void_native"}

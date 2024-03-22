@@ -1,5 +1,5 @@
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use void_core::{Event, EventReceiver, EventSender, Result};
+use void_core::{Event, EventEmitter, EventListner, Result};
 
 pub enum NativeEvent {
     Render,
@@ -18,7 +18,7 @@ pub fn create_mpsc_channel<T>() -> (MpscSender<T>, MpscReceiver<T>) {
 pub type NativeEventReceiver = MpscReceiver<NativeEvent>;
 pub type NativeEventSender = MpscSender<NativeEvent>;
 
-impl<T> EventSender for MpscSender<T>
+impl<T> EventEmitter for MpscSender<T>
 where
     T: Event + 'static,
 {
@@ -32,7 +32,7 @@ where
     }
 }
 
-impl<T> EventReceiver for MpscReceiver<T>
+impl<T> EventListner for MpscReceiver<T>
 where
     T: Event + 'static,
 {

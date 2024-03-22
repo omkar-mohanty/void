@@ -1,18 +1,17 @@
 use egui::Context;
-use void_core::{Event, EventReceiver, EventSender};
+use void_core::{Event, EventEmitter, EventListner};
 use winit::window::Window;
 
 pub enum IoEvent {
-    Output(Vec<u8>)
+    Output(Vec<u8>),
 }
 
-impl Event for IoEvent {
-}
+impl Event for IoEvent {}
 
 pub struct IoEngine<S, R, U, D>
 where
-    S: EventSender<E = U>,
-    R: EventReceiver<E = D>,
+    S: EventEmitter<E = U>,
+    R: EventListner<E = D>,
     U: Event,
     D: Event,
 {
@@ -24,8 +23,8 @@ where
 
 impl<S, R, U, D> IoEngine<S, R, U, D>
 where
-    S: EventSender<E = U>,
-    R: EventReceiver<E = D>,
+    S: EventEmitter<E = U>,
+    R: EventListner<E = D>,
     U: Event,
     D: Event,
 {
