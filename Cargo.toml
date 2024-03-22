@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 
-members = [ "hid", "native", "render",
-    "void_core",
+members = [ "hid", "void_native", "void_render",
+    "void_core", "void_engine",
 ]
 

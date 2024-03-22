@@ -1,5 +1,5 @@
 [package]
-name = "render"
+name = "void_render"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,4 +11,5 @@ egui-wgpu = "0.26.2"
 egui = "0.26.2"
 wgpu = "0.19.3"
 void_core = { path = "../void_core" }
+void_native = {path = "../void_native"}
 cfg-if = "1.0.0"

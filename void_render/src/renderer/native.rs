@@ -1,19 +1,26 @@
+use crate::gui::GuiRenderer;
 use egui::Context;
 use egui_wgpu::wgpu;
 use egui_winit::winit::window::Window;
+use void_core::System;
+use void_native::{MpscSender, NativeEvent, NativeEventReceiver, NativeEventSender};
 
-use crate::gui::GuiRenderer;
+use crate::{RenderEngine, RenderEvent};
 
-pub struct RenderEngine {
-    context: egui::Context,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    config: wgpu::SurfaceConfiguration,
-    gui_renderer: GuiRenderer,
+impl System for RenderEngine<NativeEventSender, NativeEventReceiver, RenderEvent, NativeEvent> {
+    type Sender = MpscSender<RenderEvent>;
+    type Receiver = NativeEventReceiver;
+    type EventUp = RenderEvent;
+    type EventDown = NativeEvent;
 }
 
-impl RenderEngine {
-    pub async fn new(context: Context, window: &Window) -> Self {
+impl RenderEngine<NativeEventSender, NativeEventReceiver, RenderEvent, NativeEvent> {
+    pub async fn new(
+        context: Context,
+        window: &Window,
+        event_receiver: NativeEventReceiver,
+        event_sender: MpscSender<RenderEvent>,
+    ) -> Self {
         let size = window.inner_size();
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
@@ -78,6 +85,8 @@ impl RenderEngine {
             gui_renderer,
             device,
             queue,
+            event_sender,
+            event_receiver,
         }
     }
 }

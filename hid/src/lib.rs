@@ -4,7 +4,7 @@ use winit::window::Window;
 
 pub trait Gui: FnOnce(&Context) {}
 
-#[derive(PartialEq, Eq)]
+#[derive(Eq, Hash, PartialEq)]
 pub enum IoEvent {}
 
 impl Event for IoEvent {}
