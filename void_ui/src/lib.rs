@@ -1,38 +1,28 @@
 use egui::{Context, FullOutput, RawInput};
-use void_core::{Event, EventEmitter, EventListner};
+use void_core::{Command, Event};
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
 
 pub trait Gui: Fn(&Context) {}
 
-pub enum GuiEvent {
+pub enum GuiCmd {
     Input(RawInput),
-    Output(FullOutput),
+    Pass,
 }
 
-impl Event for GuiEvent {}
+impl Command for GuiCmd {}
 
-struct GuiEngine<S, R, U, D, T>
+struct GuiEngine<T>
 where
-    S: EventEmitter<E = U>,
-    R: EventListner<E = D>,
-    U: Event,
-    D: Event,
     T: Gui,
 {
     context: Context,
-    event_sender: S,
-    event_receiver: R,
     state: T,
 }
 
-impl<S, R, U, D, T> GuiEngine<S, R, U, D, T>
+impl<T> GuiEngine<T>
 where
-    S: EventEmitter<E = U>,
-    R: EventListner<E = D>,
-    U: Event,
-    D: Event,
     T: Gui,
 {
     fn update(&mut self, raw_input: RawInput) -> FullOutput {

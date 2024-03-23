@@ -9,6 +9,9 @@ edition = "2021"
 void_core = {path = "../void_core"}
 void_native = {path = "../void_native"}
 void_render = {path = "../void_render"}
+void_io = {path = "../void_io"}
+void_ui = {path = "../void_ui"}
+wgpu = "0.19.3"
 egui = "0.26.2"
 winit = { version = "0.29.7", features = ["rwh_05"] }
 tokio = {version = "1.36.0", features = ["full"]}

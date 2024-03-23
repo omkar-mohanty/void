@@ -4,42 +4,30 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub trait Event {}
 
-pub trait Publisher {
+pub trait Observer<T: Event> {
+    fn update(&self, event: &T);
+}
+
+pub trait Subject {
     type E: Event;
-    fn subscribe(&mut self, event: Self::E);
-    fn unsubscribe(&mut self, event: Self::E);
+    fn attach(&mut self, observer: impl Observer<Self::E> + 'static);
+    fn detach(&mut self, observer: impl Observer<Self::E> + 'static);
     fn notify(&self, event: Self::E);
 }
 
-pub trait Subscriber<E: Event>: Fn(E) {}
+pub trait Command {}
 
-pub trait EventEmitter {
-    type E: Event;
-
-    fn send_event(&self, event: Self::E) -> impl Future<Output = Result<()>>;
-    fn send_event_blocking(&self, event: Self::E) -> Result<()>;
+pub trait CmdSender<T: Command> {
+    fn send(&self, cmd: T) -> impl Future<Output = Result<()>>;
 }
 
-pub trait EventListner {
-    type E: Event;
-
-    fn receieve_event(&mut self) -> impl Future<Output = Result<Self::E>>;
-    fn receive_event_blocking(&mut self) -> Result<Self::E>;
-}
-
-pub trait EventSystem {
-    type E: Event;
-    type Receiver: EventListner<E = Self::E>;
+pub trait CmdReceiver<T: Command> {
+    fn recv(&mut self) -> impl Future<Output = Option<T>>;
 }
 
 pub trait System {
-    type EventUp: Event;
-    type EventDown: Event;
-    type Receiver: EventListner<E = Self::EventDown>;
-    type Sender: EventEmitter<E = Self::EventUp>;
+    type C: Command;
+    type R: CmdReceiver<Self::C>;
 
-    fn run(
-        &mut self,
-        func: impl FnOnce(Self::EventDown) -> Self::EventUp,
-    ) -> impl Future<Output = Result<()>>;
+    fn run(&mut self, receiver: Self::R) -> impl Future<Output = Result<()>>;
 }

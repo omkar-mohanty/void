@@ -1,53 +1,38 @@
-use crate::gui::GuiRenderer;
+use crate::{gui::GuiRenderer, RenderCmd};
 use egui::Context;
-use egui_wgpu::wgpu;
-use egui_winit::winit::window::Window;
-use void_core::{Event, EventListner, Result, System};
-use void_native::{MpscReceiver, MpscSender, NativeEvent, NativeEventReceiver};
+use egui_winit::winit::dpi::PhysicalSize;
+use void_core::{CmdReceiver, Result, Subject, System};
+use void_native::MpscReceiver;
 
 use crate::{RenderEngine, RenderEvent};
 
-impl<T: Event + 'static> System
-    for RenderEngine<MpscSender<RenderEvent>, MpscReceiver<T>, RenderEvent, T>
+impl<'a, P> System for RenderEngine<'a, P>
+where
+    P: Subject<E = RenderEvent>,
 {
-    type Sender = MpscSender<RenderEvent>;
-    type Receiver = MpscReceiver<T>;
-    type EventUp = RenderEvent;
-    type EventDown = T;
+    type R = MpscReceiver<RenderCmd>;
+    type C = RenderCmd;
 
-    async fn run(&mut self, func: impl FnOnce(Self::EventDown) -> Self::EventUp) -> Result<()> {
-        let event = self.event_receiver.receieve_event().await?;
-        let render_event = func(event);
-        self.handle_render_event(render_event);
-
-        Ok(())
+    async fn run(&mut self, mut receiver: Self::R) -> Result<()> {
+        loop {
+            if let Some(cmd) = receiver.recv().await {
+                self.handle_render_cmd(cmd);
+            }
+        }
     }
 }
 
-impl RenderEngine<MpscSender<RenderEvent>, NativeEventReceiver, RenderEvent, NativeEvent> {
+impl<'a, P> RenderEngine<'a, P>
+where
+    P: Subject<E = RenderEvent>,
+{
     pub async fn new(
         context: Context,
-        window: &Window,
-        event_receiver: NativeEventReceiver,
-        event_sender: MpscSender<RenderEvent>,
+        size: PhysicalSize<u32>,
+        surface: wgpu::Surface<'a>,
+        publisher: P,
+        adapter: wgpu::Adapter,
     ) -> Self {
-        let size = window.inner_size();
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
-
-        let surface = instance.create_surface(&window).unwrap();
-
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
-            .await
-            .unwrap();
-
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
@@ -95,8 +80,8 @@ impl RenderEngine<MpscSender<RenderEvent>, NativeEventReceiver, RenderEvent, Nat
             gui_renderer,
             device,
             queue,
-            event_sender,
-            event_receiver,
+            publisher,
+            surface,
         }
     }
 }

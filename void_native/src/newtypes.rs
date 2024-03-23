@@ -1,5 +1,5 @@
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use void_core::{Event, EventEmitter, EventListner, Result};
+use void_core::{CmdReceiver, CmdSender, Command, Event, Result};
 
 pub enum NativeEvent {
     Render,
@@ -15,36 +15,15 @@ pub fn create_mpsc_channel<T>() -> (MpscSender<T>, MpscReceiver<T>) {
     (MpscSender(sender), MpscReceiver(receiver))
 }
 
-pub type NativeEventReceiver = MpscReceiver<NativeEvent>;
-pub type NativeEventSender = MpscSender<NativeEvent>;
-
-impl<T> EventEmitter for MpscSender<T>
-where
-    T: Event + 'static,
-{
-    type E = T;
-    async fn send_event(&self, event: Self::E) -> Result<()> {
-        self.0.send(event)?;
+impl<T: Command + 'static> CmdSender<T> for MpscSender<T> {
+    async fn send(&self, cmd: T) -> Result<()> {
+        self.0.send(cmd)?;
         Ok(())
-    }
-    fn send_event_blocking(&self, _event: Self::E) -> Result<()> {
-        todo!()
     }
 }
 
-impl<T> EventListner for MpscReceiver<T>
-where
-    T: Event + 'static,
-{
-    type E = T;
-
-    async fn receieve_event(&mut self) -> Result<Self::E> {
-        let event = self.0.recv().await.unwrap();
-        Ok(event)
-    }
-
-    fn receive_event_blocking(&mut self) -> Result<Self::E> {
-        let event = self.0.blocking_recv().unwrap();
-        Ok(event)
+impl<T: Command + 'static> CmdReceiver<T> for MpscReceiver<T> {
+    async fn recv(&mut self) -> Option<T> {
+        self.0.recv().await
     }
 }
