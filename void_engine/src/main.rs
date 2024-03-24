@@ -1,111 +1,137 @@
-use void_core::{Observer, Subject};
-use void_io::{IoEngine, IoEvent};
-use void_render::{RenderEngine, RenderEvent};
-use winit::{
-    event_loop::EventLoop,
-    window::{Window, WindowBuilder},
-};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
+use anyhow::Ok;
+use tokio::{sync::mpsc::UnboundedReceiver, task::JoinHandle};
+use void_core::{CmdSender, Subject, System};
+use void_engine::{GuiEngineSubject, IoEngineSubject, RenderEngineSubject};
+use void_io::{IoCmd, IoEngine};
+use void_native::{create_mpsc_channel, MpscReceiver, MpscSender};
+use void_render::RenderEngine;
+use void_ui::{GuiEngine, NativeGui};
+use winit::{event_loop::EventLoop, window::WindowBuilder};
+use tokio::sync::mpsc::unbounded_channel;
 
-struct App<'a> {
-    io_engine: IoEngine<IoEngineSubject>,
-    render_engine: RenderEngine<'a, RenderEngineSubject>,
+type SystemHandle = (UnboundedReceiver<String>, JoinHandle<()>);
+
+pub struct App<'a> {
+    io_sender: MpscSender<IoCmd>,
+    systems: HashMap<&'a str, SystemHandle>,
+    event_loop: EventLoop<()>,
 }
 
-#[derive(Default)]
-struct RenderEngineSubject {
-    observers: Vec<Box<dyn Observer<RenderEvent>>>,
-}
-
-impl Subject for RenderEngineSubject {
-    type E = RenderEvent;
-
-    fn attach(&mut self, observer: impl Observer<RenderEvent> + 'static) {
-        self.observers.push(Box::new(observer));
-    }
-
-    fn detach(&mut self, _observer: impl Observer<RenderEvent>) {}
-
-    fn notify(&self, event: Self::E) {
-        for obs in &self.observers {
-            obs.update(&event);
-        }
-    }
-}
-
-#[derive(Default)]
-struct IoEngineSubject {
-    observers: Vec<Box<dyn Observer<IoEvent>>>,
-}
-
-struct GuiIoObserver {
-    raw_input: egui::RawInput,
-}
-
-impl Subject for IoEngineSubject {
-    type E = IoEvent;
-
-    fn attach(&mut self, observer: impl Observer<IoEvent> + 'static) {
-        self.observers.push(Box::new(observer));
-    }
-
-    fn detach(&mut self, _observer: impl Observer<IoEvent>) {}
-
-    fn notify(&self, event: Self::E) {
-        for obs in &self.observers {
-            obs.update(&event)
-        }
+impl<'a> App<'a> {
+    pub fn run(mut self) -> anyhow::Result<()> {
+        self.event_loop.run(move| event, _ewlt| {
+            self.io_sender.send_blocking(IoCmd::WindowEvent(event)).unwrap();
+            for sys in  self.systems.values_mut() {
+                let recv = &mut sys.0;
+                if let Some(msg) = recv.blocking_recv() {
+                    println!("{}", msg);
+                }
+            }
+        })?;
+        Ok(())
     }
 }
 
-async fn init<'a>(
-    window: &'a Window,
-    surface: wgpu::Surface<'a>,
-    instance: wgpu::Instance,
-) -> anyhow::Result<App<'a>> {
+async fn init<'a>() -> anyhow::Result<App<'a>> {
+    use void_engine::gui::*;
+    use void_engine::render::*;
+
+    let event_loop = EventLoop::new()?;
+    let window = Arc::new(WindowBuilder::new().build(&event_loop)?);
     let context = egui::Context::default();
 
-    let engine_subject = RenderEngineSubject::default();
+    let (render_cmd_sender, render_cmd_receiver) = create_mpsc_channel();
+    let (gui_cmd_sender, gui_cmd_receiver) = create_mpsc_channel();
+    let (io_cmd_sender, io_cmd_receiver) = create_mpsc_channel();
 
-    let io_engine_subject = IoEngineSubject::default();
+    //Render engine event publisher
+    let mut render_engine_subject = RenderEngineSubject::default();
+    render_engine_subject.attach(GuiObserver {
+        cmd_sender: gui_cmd_sender.clone(),
+    });
 
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
-            compatible_surface: Some(&surface),
-            force_fallback_adapter: false,
-        })
-        .await
-        .unwrap();
+    // Io Engine event publisher
+    let mut io_engine_subject = IoEngineSubject::default();
+    io_engine_subject.attach(GuiObserver {
+        cmd_sender: gui_cmd_sender.clone(),
+    });
+    io_engine_subject.attach(RendererObserver {
+        cmd_sender: render_cmd_sender.clone(),
+    });
 
-    let render_engine = RenderEngine::new(
+    // Gui Engine event publisher
+    let mut gui_engine_subject = GuiEngineSubject::default();
+    gui_engine_subject.attach(RendererObserver {
+        cmd_sender: render_cmd_sender.clone(),
+    });
+
+    let mut systems = HashMap::new();
+
+    let (io_handle, io_recv) = unbounded_channel();
+
+    let mut io_engine = IoEngine::new(
         context.clone(),
-        window.inner_size(),
-        surface,
-        engine_subject,
-        adapter,
+        Arc::clone(&window),
+        io_engine_subject,
+        io_cmd_receiver,
+    );
+    let join_handle = tokio::spawn(async move {
+        if let Err(msg) = io_engine.run().await {
+            io_handle.send(msg.to_string());
+        }
+        io_handle.send("Hello".to_string());
+    });
+
+    systems.insert("Io", (io_recv, join_handle));
+
+    let (gui_handle, gui_recv) = unbounded_channel();
+    let mut gui_engine = GuiEngine::new(
+        context.clone(),
+        gui_cmd_receiver,
+        gui_engine_subject,
+        NativeGui {},
+    );
+
+
+    let join_handle = tokio::spawn(async move {
+        if let Err(msg) = gui_engine.run().await {
+            gui_handle.send(msg.to_string());
+        }
+        gui_handle.send("Hello".to_string());
+    });
+
+    systems.insert("Gui", (gui_recv, join_handle));
+
+    let (render_handle, render_recv) = unbounded_channel();
+
+    let mut render_engine = RenderEngine::new(
+        Arc::clone(&window),
+        context.clone(),
+        render_engine_subject,
+        render_cmd_receiver,
     )
     .await;
-    let io_engine = IoEngine::new(context.clone(), &window, io_engine_subject);
+
+    let join_handle = tokio::spawn(async move {
+        if let Err(msg) = render_engine.run().await {
+            render_handle.send(msg.to_string());
+        }
+        render_handle.send("Hello".to_string());
+    });
+
+    systems.insert("Render", (render_recv, join_handle));
 
     Ok(App {
-        render_engine,
-        io_engine,
+        io_sender: io_cmd_sender,
+        event_loop,
+        systems
     })
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let event_loop = EventLoop::new()?;
-    let window = WindowBuilder::new().build(&event_loop)?;
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
-    });
-    let surface = instance.create_surface(&window)?;
-
-    let mut app = init(&window, surface, instance).await?;
-
-    app.io_engine.start_loop(event_loop, &window);
+    let app = init().await?;
 
     Ok(())
 }

@@ -1,10 +1,19 @@
+#[cfg(not(target_arch = "wasm32"))]
+mod native;
+
+#[cfg(not(target_arch = "wasm32"))]
+use native::*;
+
 use egui::{Context, RawInput};
-use void_core::{Event, Subject};
-use winit::{
-    event::WindowEvent,
-    event_loop::{EventLoop, EventLoopWindowTarget},
-    window::Window,
-};
+use std::sync::Arc;
+use void_core::{CmdReceiver, Command, Event, Result, Subject};
+use winit::{event::WindowEvent, window::Window};
+
+pub enum IoCmd {
+    WindowEvent(winit::event::Event<()>),
+}
+
+impl Command for IoCmd {}
 
 #[derive(Clone)]
 pub enum IoEvent {
@@ -16,26 +25,30 @@ pub enum IoEvent {
 
 impl Event for IoEvent {}
 
-pub struct IoEngine<S>
+pub struct IoEngine<S, R>
 where
     S: Subject<E = IoEvent>,
+    R: CmdReceiver<IoCmd>,
 {
-    context: Context,
+    window: Arc<Window>,
     state: egui_winit::State,
     subject: S,
+    receiver: R,
 }
 
-impl<S> IoEngine<S>
+impl<S, R> IoEngine<S, R>
 where
     S: Subject<E = IoEvent>,
+    R: CmdReceiver<IoCmd>,
 {
-    pub fn new(context: Context, window: &Window, subject: S) -> Self {
+    pub fn new(context: Context, window: Arc<Window>, subject: S, receiver: R) -> Self {
         let viewport_id = context.viewport_id();
         let state = egui_winit::State::new(context.clone(), viewport_id, &window, None, None);
         Self {
-            context,
             state,
             subject,
+            window,
+            receiver,
         }
     }
 
@@ -45,32 +58,37 @@ where
         false
     }
 
-    fn handle_window_event(&self, window_event: WindowEvent, ewlt: &EventLoopWindowTarget<()>) {
+    fn handle_window_event(&self, window_event: WindowEvent) -> Result<()> {
         match window_event {
-            WindowEvent::CloseRequested => {
-                ewlt.exit();
-            }
             WindowEvent::Resized(physical_size) => {
                 let (height, width) = (physical_size.height, physical_size.width);
-                self.subject.notify(IoEvent::Resized { height, width });
+                self.subject.notify(IoEvent::Resized { height, width })?;
             }
             _ => {}
         }
+        Ok(())
     }
 
-    pub fn start_loop(&mut self, event_loop: EventLoop<()>, window: &Window) {
-        let _ = event_loop.run(move |event, ewlt| {
-            use winit::event::Event;
-            match event {
-                Event::WindowEvent { window_id, event } if window_id == window.id() => {
-                    if !self.input(window, &event) {
-                        self.handle_window_event(event, ewlt);
-                        let full_input = self.state.take_egui_input(window);
-                        self.subject.notify(IoEvent::Input(full_input));
-                    }
+    fn handle_event(&mut self, event: winit::event::Event<()>) -> Result<()> {
+        use winit::event::Event;
+        match event {
+            Event::WindowEvent { window_id, event } if window_id == self.window.id() => {
+                if !self.input(&self.window, &event) {
+                    self.handle_window_event(event)?;
+                    let full_input = self.state.take_egui_input(&self.window);
+                    self.subject.notify(IoEvent::Input(full_input))?;
                 }
-                _ => {}
             }
-        });
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn handle_cmd(&mut self, cmd: IoCmd) -> Result<()> {
+        use IoCmd::*;
+        match cmd {
+            WindowEvent(event) => self.handle_event(event)?,
+        };
+        Ok(())
     }
 }

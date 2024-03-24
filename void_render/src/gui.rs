@@ -3,7 +3,7 @@ use egui::{Context, Visuals};
 use egui_wgpu::Renderer;
 use egui_wgpu::ScreenDescriptor;
 
-use wgpu::{self, Device, TextureFormat};
+use wgpu::{Device, TextureFormat};
 
 pub struct GuiRenderer {
     context: Context,

@@ -1,38 +1,60 @@
+use std::sync::Arc;
+
 use crate::{gui::GuiRenderer, RenderCmd};
-use egui::Context;
-use egui_winit::winit::dpi::PhysicalSize;
-use void_core::{CmdReceiver, Result, Subject, System};
-use void_native::MpscReceiver;
-
 use crate::{RenderEngine, RenderEvent};
+use egui::Context;
+use void_core::{CmdReceiver, Result, Subject, System};
+use winit::window::Window;
 
-impl<'a, P> System for RenderEngine<'a, P>
+use super::model::Vertex;
+
+impl<'a, P, R> System for RenderEngine<'a, P, R>
 where
-    P: Subject<E = RenderEvent>,
+    P: Subject<E = RenderEvent> + Send,
+    R: CmdReceiver<RenderCmd>,
 {
-    type R = MpscReceiver<RenderCmd>;
     type C = RenderCmd;
 
-    async fn run(&mut self, mut receiver: Self::R) -> Result<()> {
-        loop {
-            if let Some(cmd) = receiver.recv().await {
-                self.handle_render_cmd(cmd);
-            }
+    async fn run(&mut self) -> Result<()> {
+        if let Some(cmd) = self.receiver.recv().await {
+            self.handle_cmd(cmd)?;
         }
+
+        Ok(())
+    }
+
+    fn run_blocking(&mut self) -> Result<()> {
+        if let Some(cmd) = self.receiver.recv_blockding() {
+            self.handle_cmd(cmd)?;
+        }
+        Ok(())
     }
 }
 
-impl<'a, P> RenderEngine<'a, P>
+impl<'a, P, R> RenderEngine<'a, P, R>
 where
     P: Subject<E = RenderEvent>,
+    R: CmdReceiver<RenderCmd>,
 {
-    pub async fn new(
-        context: Context,
-        size: PhysicalSize<u32>,
-        surface: wgpu::Surface<'a>,
-        publisher: P,
-        adapter: wgpu::Adapter,
-    ) -> Self {
+    pub async fn new(window: Arc<Window>, context: Context, subject: P, receiver: R) -> Self {
+        let size = window.inner_size();
+
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            ..Default::default()
+        });
+
+        let surface = instance.create_surface(Arc::clone(&window)).unwrap();
+
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::default(),
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+            })
+            .await
+            .unwrap();
+
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
@@ -74,14 +96,39 @@ where
 
         let gui_renderer = GuiRenderer::new(&device, config.format, None, 1, context.clone());
 
+        let shader = wgpu::ShaderModuleDescriptor {
+            label: Some("Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+        };
+
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[],
+                push_constant_ranges: &[],
+            });
+
+        let pipeline = crate::pipeline::create_render_pipeline(
+            &device,
+            &render_pipeline_layout,
+            config.format,
+            None,
+            &[Vertex::desc()],
+            wgpu::PrimitiveTopology::TriangleList,
+            shader,
+        );
+
         Self {
+            window,
             config,
-            context,
             gui_renderer,
             device,
             queue,
-            publisher,
+            subject,
             surface,
+            receiver,
+            pipeline,
+            full_output: None,
         }
     }
 }

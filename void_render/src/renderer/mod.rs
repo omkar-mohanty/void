@@ -1,13 +1,20 @@
+use std::{iter, sync::Arc};
+
 use crate::gui::GuiRenderer;
 use egui::FullOutput;
-use void_core::{Command, Event, Subject};
+use void_core::{CmdReceiver, Command, Event, Result, Subject};
+use winit::window::Window;
+
+mod model;
+pub mod pipeline;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
 
+#[derive(Clone)]
 pub enum RenderCmd {
     GuiOutput(FullOutput),
-    Render(f32),
+    Render,
     Resize { height: u32, width: u32 },
 }
 
@@ -19,29 +26,50 @@ pub enum RenderEvent {
 
 impl Event for RenderEvent {}
 
-pub struct RenderEngine<'a, P>
+pub struct RenderEngine<'a, P, R>
 where
     P: Subject<E = RenderEvent>,
+    R: CmdReceiver<RenderCmd>,
 {
+    window: Arc<Window>,
     surface: wgpu::Surface<'a>,
-    context: egui::Context,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
+    pipeline: wgpu::RenderPipeline,
     gui_renderer: GuiRenderer,
-    publisher: P,
+    subject: P,
+    receiver: R,
+    full_output: Option<FullOutput>,
 }
 
-impl<'a, P> RenderEngine<'a, P>
+impl<'a, P, R> RenderEngine<'a, P, R>
 where
     P: Subject<E = RenderEvent>,
+    R: CmdReceiver<RenderCmd>,
 {
-    fn update(
+    fn update_gui(
         &mut self,
         full_output: FullOutput,
         encoder: &mut wgpu::CommandEncoder,
+        texture_view: &wgpu::TextureView,
         pixels_per_point: f32,
     ) {
+        let screen_descriptor = egui_wgpu::ScreenDescriptor {
+            size_in_pixels: [self.config.width, self.config.height],
+            pixels_per_point,
+        };
+        self.gui_renderer.update(
+            &self.device,
+            &self.queue,
+            encoder,
+            &texture_view,
+            screen_descriptor,
+            full_output,
+        );
+    }
+
+    fn render(&mut self) {
         let output = self.surface.get_current_texture().unwrap();
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
             label: None,
@@ -53,33 +81,63 @@ where
             base_array_layer: 0,
             array_layer_count: None,
         });
-        let screen_descriptor = egui_wgpu::ScreenDescriptor {
-            size_in_pixels: [self.config.width, self.config.height],
-            pixels_per_point,
-        };
-        self.gui_renderer.update(
-            &self.device,
-            &self.queue,
-            encoder,
-            &view,
-            screen_descriptor,
-            full_output,
-        );
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Encoder"),
+            });
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            render_pass.set_pipeline(&self.pipeline);
+            render_pass.draw(0..3, 0..1);
+        }
+
+        if self.full_output.is_some() {
+            let full_output = self.full_output.take().unwrap();
+            self.update_gui(
+                full_output,
+                &mut encoder,
+                &view,
+                self.window.scale_factor() as f32,
+            );
+        }
+
+        self.queue.submit(iter::once(encoder.finish()));
+        output.present();
     }
 
-    fn render(&mut self) {
-        todo!()
-    }
-
-    fn handle_render_cmd(&mut self, render_event: RenderCmd) {
+    fn handle_cmd(&mut self, render_event: RenderCmd) -> Result<()> {
         use RenderCmd::*;
         match render_event {
             Resize { height, width } => {
                 self.config.height = height;
                 self.config.width = width;
             }
-            GuiOutput(_full_output) => todo!(),
-            Render(_pixels_per_point) => self.render(),
+            GuiOutput(full_output) => self.full_output = Some(full_output),
+            Render => self.render(),
         }
+        self.subject.notify(RenderEvent::PassComplete)?;
+        Ok(())
     }
 }

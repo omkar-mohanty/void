@@ -8,6 +8,7 @@ pub enum NativeEvent {
 impl Event for NativeEvent {}
 
 pub struct MpscReceiver<T>(pub UnboundedReceiver<T>);
+#[derive(Clone)]
 pub struct MpscSender<T>(pub UnboundedSender<T>);
 
 pub fn create_mpsc_channel<T>() -> (MpscSender<T>, MpscReceiver<T>) {
@@ -15,15 +16,24 @@ pub fn create_mpsc_channel<T>() -> (MpscSender<T>, MpscReceiver<T>) {
     (MpscSender(sender), MpscReceiver(receiver))
 }
 
-impl<T: Command + 'static> CmdSender<T> for MpscSender<T> {
+impl<T: Command + 'static + Send> CmdSender<T> for MpscSender<T> {
     async fn send(&self, cmd: T) -> Result<()> {
+        self.0.send(cmd)?;
+        Ok(())
+    }
+
+    fn send_blocking(&self, cmd: T) -> Result<()> {
         self.0.send(cmd)?;
         Ok(())
     }
 }
 
-impl<T: Command + 'static> CmdReceiver<T> for MpscReceiver<T> {
+impl<T: Command + 'static + Send> CmdReceiver<T> for MpscReceiver<T> {
     async fn recv(&mut self) -> Option<T> {
         self.0.recv().await
+    }
+
+    fn recv_blockding(&mut self) -> Option<T> {
+        self.0.blocking_recv()
     }
 }

@@ -1,0 +1,96 @@
+use std::{str::FromStr, sync::Arc, thread};
+use void_core::{CmdSender, Subject, System};
+use void_engine::{GuiEngineSubject, IoEngineSubject, RenderEngineSubject};
+use void_io::{IoCmd, IoEngine};
+use void_native::{create_mpsc_channel, MpscSender};
+use void_render::RenderEngine;
+use void_ui::{GuiEngine, NativeGui};
+use winit::{event::WindowEvent, event_loop::EventLoop, window::WindowBuilder};
+
+async fn window_loop(event_loop: EventLoop<()>, cmd_Sender: MpscSender<IoCmd>) {
+    event_loop.run(|event, _| {
+        cmd_Sender.send_blocking(IoCmd::WindowEvent(event)).unwrap();
+    }).unwrap();
+}
+
+async fn init() -> anyhow::Result<()> {
+    use void_engine::gui::*;
+    use void_engine::render::*;
+
+    let event_loop = EventLoop::new()?;
+    let window = Arc::new(WindowBuilder::new().build(&event_loop)?);
+
+    let context = egui::Context::default();
+
+    let (render_cmd_sender, render_cmd_receiver) = create_mpsc_channel();
+
+    let (gui_cmd_sender, gui_cmd_receiver) = create_mpsc_channel();
+
+    let (io_cmd_sender, io_cmd_Receiver) = create_mpsc_channel();
+
+    //Render engine event publisher
+    let mut render_engine_subject = RenderEngineSubject::default();
+
+    render_engine_subject.attach(GuiObserver {
+        cmd_sender: gui_cmd_sender.clone(),
+    });
+
+    // Io Engine event publisher
+    let mut io_engine_subject = IoEngineSubject::default();
+
+    io_engine_subject.attach(GuiObserver {
+        cmd_sender: gui_cmd_sender.clone(),
+    });
+
+    io_engine_subject.attach(RendererObserver {
+        cmd_sender: render_cmd_sender.clone(),
+    });
+
+    // Gui Engine event publisher
+    let mut gui_engine_subject = GuiEngineSubject::default();
+
+    gui_engine_subject.attach(RendererObserver {
+        cmd_sender: render_cmd_sender.clone(),
+    });
+
+    let mut render_engine = RenderEngine::new(
+        Arc::clone(&window),
+        context.clone(),
+        render_engine_subject,
+        render_cmd_receiver,
+    )
+    .await;
+
+    let mut gui_engine = GuiEngine::new(
+        context.clone(),
+        gui_cmd_receiver,
+        gui_engine_subject,
+        NativeGui {},
+    );
+
+    tokio::spawn(async move {
+        gui_engine.run().await.unwrap();
+    });
+
+    let mut io_engine = IoEngine::new(context.clone(), window, io_engine_subject, io_cmd_Receiver);
+
+    tokio::spawn(async move {
+        if let Err(msg)  = io_engine.run().await {
+            return msg.to_string()
+        }
+        String::from_str("Successfull").unwrap()
+    });
+
+    event_loop.run(|event, _ewlt| {
+        io_cmd_sender.send_blocking(IoCmd::WindowEvent(event)).unwrap();
+    })?;
+
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    init().await?;
+
+    Ok(())
+}

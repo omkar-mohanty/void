@@ -1,8 +1,36 @@
-use void_core::{Observer, Subject};
+use void_core::{Observer, Result, Subject};
 use void_io::IoEvent;
+use void_render::RenderEvent;
+use void_ui::GuiEvent;
 
-mod gui;
+pub mod gui;
+pub mod io;
+pub mod render;
 
+#[derive(Default)]
+pub struct GuiEngineSubject {
+    observers: Vec<Box<dyn Observer<GuiEvent>>>,
+}
+
+impl Subject for GuiEngineSubject {
+    type E = GuiEvent;
+
+    fn attach(&mut self, observer: impl Observer<Self::E> + 'static) {
+        self.observers.push(Box::new(observer));
+    }
+
+    fn detach(&mut self, _observer: impl Observer<Self::E> + 'static) {}
+
+    fn notify(&self, event: Self::E) -> Result<()> {
+        for obs in &self.observers {
+            obs.update(&event)?
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Default)]
 pub struct IoEngineSubject {
     observers: Vec<Box<dyn Observer<IoEvent>>>,
 }
@@ -16,9 +44,34 @@ impl Subject for IoEngineSubject {
 
     fn detach(&mut self, _observer: impl Observer<IoEvent>) {}
 
-    fn notify(&self, event: Self::E) {
+    fn notify(&self, event: Self::E) -> Result<()> {
         for obs in &self.observers {
-            obs.update(&event)
+            obs.update(&event)?
         }
+
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct RenderEngineSubject {
+    observers: Vec<Box<dyn Observer<RenderEvent>>>,
+}
+
+impl Subject for RenderEngineSubject {
+    type E = RenderEvent;
+
+    fn attach(&mut self, observer: impl Observer<RenderEvent> + 'static) {
+        self.observers.push(Box::new(observer));
+    }
+
+    fn detach(&mut self, _observer: impl Observer<RenderEvent>) {}
+
+    fn notify(&self, event: Self::E) -> Result<()> {
+        for obs in &self.observers {
+            obs.update(&event)?;
+        }
+
+        Ok(())
     }
 }
