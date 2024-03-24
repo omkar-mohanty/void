@@ -1,8 +1,6 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
 
-#[cfg(not(target_arch = "wasm32"))]
-use native::*;
 
 use egui::{Context, RawInput};
 use std::sync::Arc;
