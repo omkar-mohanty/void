@@ -6,7 +6,7 @@ mod gui;
 use egui::{Context, RawInput};
 use std::{fmt::Display, sync::Arc};
 use void_core::{ICmdReceiver, ICommand, IEvent, Result, ISubject};
-use winit::{event::WindowEvent, event_loop::EventLoop, window::Window};
+use winit::{event::WindowEvent, window::Window};
 
 pub enum IoCmd {
     WindowEvent(winit::event::Event<()>),

@@ -8,7 +8,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 use void_core::{IGui, Result};
 
-use crate::{renderer, IBuilder, IRenderer, RendererBuilder, WindowResource};
+use crate::{IBuilder, IRenderer, RendererBuilder, WindowResource};
 
 #[derive(Default)]
 struct GuiRendererBuilder<'a, T: IGui + Default + Send> {
