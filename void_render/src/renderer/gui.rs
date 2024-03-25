@@ -1,4 +1,4 @@
-use crate::{pipeline, renderer::Vertex, IRenderer, RendererBuilder, WindowResource};
+use crate::{IRenderer, RendererBuilder, WindowResource};
 use egui::epaint::Shadow;
 use egui::{Context, Visuals};
 use egui_wgpu::Renderer;
