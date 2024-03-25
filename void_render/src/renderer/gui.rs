@@ -1,17 +1,17 @@
+use crate::{pipeline, renderer::Vertex, IRenderer, RendererBuilder, WindowResource};
 use egui::epaint::Shadow;
 use egui::{Context, Visuals};
 use egui_wgpu::Renderer;
 use egui_wgpu::ScreenDescriptor;
 use egui_winit::State;
-use winit::dpi::PhysicalSize;
 use std::ops::Deref;
 use std::sync::Arc;
-use void_core::{IGui, Result};
-
-use crate::{IBuilder, IRenderer, RendererBuilder, WindowResource};
+use void_core::{IBuilder, IGui, Result};
+use winit::dpi::PhysicalSize;
+use winit::event::WindowEvent;
 
 #[derive(Default)]
-struct GuiRendererBuilder<'a, T: IGui + Default + Send> {
+pub struct GuiRendererBuilder<'a, T: IGui + Default + Send> {
     msaa_samples: Option<u32>,
     egui_context: Option<Context>,
     resource: Option<Arc<WindowResource<'a>>>,
@@ -71,22 +71,59 @@ impl<'a, T: IGui + Default + Send> RendererBuilder<GuiRendererBuilder<'a, T>, Gu
         self.builder.resource = Some(resource);
         self
     }
+
+    pub fn set_gui(mut self, gui: T) -> Self {
+        self.builder.gui = Some(gui);
+        self
+    }
 }
 
-impl<'a, T: IGui + Default + Send> IBuilder for RendererBuilder<GuiRendererBuilder<'a, T>, GuiRenderer<'a, T>> {
+impl<'a, T: IGui + Default + Send> IBuilder
+    for RendererBuilder<GuiRendererBuilder<'a, T>, GuiRenderer<'a, T>>
+{
     type Output = GuiRenderer<'a, T>;
 
     async fn build(self) -> Result<Self::Output> {
-        self.builder.build().await
+        let res = self.builder.build().await?;
+        Ok(res)
     }
 }
 
 impl<T: IGui> IRenderer for GuiRenderer<'_, T> {
-    async fn render(&mut self) {
-        todo!("Implement Gui Render Async");
+    async fn render(&mut self) -> std::result::Result<(), wgpu::SurfaceError> {
+        self.render_blocking()
     }
-    fn render_blocking(&mut self) {
-        todo!("Implement Gui Render Async");
+
+    fn render_blocking(&mut self) -> std::result::Result<(), wgpu::SurfaceError> {
+        let output = self.resource.surface.get_current_texture()?;
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
+            label: None,
+            format: None,
+            dimension: None,
+            aspect: wgpu::TextureAspect::All,
+            base_mip_level: 0,
+            mip_level_count: None,
+            base_array_layer: 0,
+            array_layer_count: None,
+        });
+
+        let mut encoder =
+            self.resource
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Gui Renderer Command Encoder"),
+                });
+
+        let screen_descriptor = ScreenDescriptor {
+            size_in_pixels: [self.config.width, self.config.height],
+            pixels_per_point: self.resource.window.scale_factor() as f32,
+        };
+        self.draw(&mut encoder, &view, screen_descriptor);
+        self.resource
+            .queue
+            .submit(std::iter::once(encoder.finish()));
+        output.present();
+        Ok(())
     }
 }
 
@@ -104,7 +141,7 @@ impl<'a, T: IGui> GuiRenderer<'a, T> {
         msaa_samples: u32,
         egui_context: Context,
         resource: Arc<WindowResource<'a>>,
-        gui:T,
+        gui: T,
     ) -> Self {
         const BORDER_RADIUS: f32 = 2.0;
         let WindowResource {
@@ -113,8 +150,9 @@ impl<'a, T: IGui> GuiRenderer<'a, T> {
             window,
             ..
         } = resource.deref();
+        let config = config.clone();
 
-        let output_color_format = config.format;
+        let color_format = config.format;
 
         let viewport_id = egui_context.viewport_id();
 
@@ -126,26 +164,18 @@ impl<'a, T: IGui> GuiRenderer<'a, T> {
 
         egui_context.set_visuals(visuals);
 
-        let egui_renderer =
-            egui_wgpu::Renderer::new(&device, output_color_format, None, msaa_samples);
+        let egui_renderer = egui_wgpu::Renderer::new(&device, color_format, None, msaa_samples);
 
         let state = egui_winit::State::new(egui_context.clone(), viewport_id, &window, None, None);
 
-        let config = resource.config.clone();
-
         Self {
+            config,
             resource,
             state,
             context: egui_context,
             renderer: egui_renderer,
             gui,
-            config
         }
-    }
-
-    pub fn resize(&mut self, size: PhysicalSize<u32>) {
-        self.config.width = size.width;
-        self.config.height = size.height;
     }
 
     pub fn draw(
@@ -197,5 +227,25 @@ impl<'a, T: IGui> GuiRenderer<'a, T> {
         for x in &full_output.textures_delta.free {
             self.renderer.free_texture(x)
         }
+    }
+
+    pub fn resize(&mut self, size: PhysicalSize<u32>) {
+        if size.width > 0 && size.height > 0 {
+            self.config.width = size.width;
+            self.config.height = size.height;
+            self.resource
+                .surface
+                .configure(&self.resource.device, &self.config);
+        }
+    }
+
+    pub fn gather_input(&mut self, event: &WindowEvent) {
+        let _ = self.state.on_window_event(&self.resource.window, event);
+    }
+
+    #[allow(unused_variables)]
+    pub fn input(&self, event: &WindowEvent) -> bool {
+        self.resource.window.request_redraw();
+        false
     }
 }

@@ -1,45 +1,60 @@
 use anyhow::Ok;
 use std::sync::Arc;
-use void_core::{ISubject};
-use void_engine::{IoEngineSubject};
-use void_io::{IoEngine};
-use void_native::{create_mpsc_channel};
-use winit::{event_loop::EventLoop, window::WindowBuilder};
+use void_core::IBuilder;
+use void_render::{IRenderer, RendererBuilder, WindowResource};
+use void_ui::VoidUi;
+use winit::{event::WindowEvent, event_loop::EventLoop, window::WindowBuilder};
 
 async fn init<'a>() -> anyhow::Result<()> {
-    use void_engine::render::*;
-
     let event_loop = EventLoop::new()?;
     let window = Arc::new(WindowBuilder::new().build(&event_loop)?);
     let context = egui::Context::default();
 
-    let (render_cmd_sender, render_cmd_receiver) = create_mpsc_channel();
-    let (io_cmd_sender, io_cmd_receiver) = create_mpsc_channel();
+    let window_resource = WindowResource::new(window).await;
 
-    //Render engine event publisher
+    let mut gui_renderer = RendererBuilder::new()
+        .set_msaa(1)
+        .set_context(context.clone())
+        .set_resource(Arc::clone(&window_resource))
+        .set_gui(VoidUi {})
+        .build()
+        .await
+        .unwrap();
 
-    // Io Engine event publisher
-    let mut io_engine_subject = IoEngineSubject::default();
-    
-    io_engine_subject.attach(RendererObserver {
-        cmd_sender: render_cmd_sender.clone(),
-    });
+    event_loop.run(move |event, ewlt| {
+        use winit::event::Event;
+        match event {
+            Event::WindowEvent { window_id, event } if window_resource.window.id() == window_id => {
+                if !gui_renderer.input(&event) {
+                    match event {
+                        WindowEvent::CloseRequested => ewlt.exit(),
+                        WindowEvent::RedrawRequested => {
+                            log::info!("Redraw Requested");
+                            gui_renderer.render_blocking().unwrap()
+                        }
+                        WindowEvent::Resized(physical_size) => {
+                            let width = physical_size.width;
+                            let height = physical_size.height;
+                            let mut config = window_resource.config.clone();
+                            config.height = height;
+                            config.width =width;
+                            window_resource.surface.configure(&window_resource.device, &config);
+                        },
+                        _ => {}
+                    }
+                    gui_renderer.gather_input(&event);
+                }
+            }
+            _ => {}
+        }
+    })?;
 
-    // Gui Engine event publisher
-
-    let io_engine = IoEngine::new(
-        context.clone(),
-        Arc::clone(&window),
-        io_engine_subject,
-        io_cmd_receiver,
-    );
-
-    todo!("Run Event Loop, init Model Renderer, GuiRenderer etc")
+    Ok(())
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
-    let app = init().await?;
+    init().await?;
     Ok(())
 }

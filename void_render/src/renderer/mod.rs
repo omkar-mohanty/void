@@ -1,7 +1,7 @@
 use core::fmt;
 use std::{future::Future, sync::Arc};
 
-use void_core::{ICommand, IEvent, Result};
+use void_core::{IBuilder, ICommand, IEvent, Locked};
 use winit::window::Window;
 
 use self::model::Vertex;
@@ -10,6 +10,8 @@ pub mod gui;
 pub mod model;
 pub mod pipeline;
 pub mod scene;
+
+type LockedWindowResource<'a> = Locked<WindowResource<'a>>;
 
 #[derive(Clone)]
 pub enum RenderCmd {
@@ -34,14 +36,8 @@ pub enum RenderEvent {
 impl IEvent for RenderEvent {}
 
 pub trait IRenderer {
-    fn render(&mut self) -> impl Future<Output = ()>;
-    fn render_blocking(&mut self);
-}
-
-pub trait IBuilder {
-    type Output;
-
-    fn build(self) -> impl Future<Output = Result<Self::Output>> + Send;
+    fn render(&mut self) -> impl Future<Output = std::result::Result<(), wgpu::SurfaceError>>;
+    fn render_blocking(&mut self) -> std::result::Result<(), wgpu::SurfaceError>;
 }
 
 pub struct RendererBuilder<B, T>
@@ -58,7 +54,6 @@ pub struct WindowResource<'a> {
     pub adapter: wgpu::Adapter,
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
-    pub pipeline: wgpu::RenderPipeline,
     pub window: Arc<Window>,
 }
 
@@ -155,7 +150,6 @@ impl<'a> WindowResource<'a> {
             device,
             queue,
             config,
-            pipeline,
             window,
         })
     }

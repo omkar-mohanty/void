@@ -19,4 +19,3 @@ impl IObserver<IoEvent> for RendererObserver {
         Ok(())
     }
 }
-

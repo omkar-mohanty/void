@@ -1,4 +1,4 @@
-use void_core::{ICmdReceiver, Result,ISubject, ISystem};
+use void_core::{ICmdReceiver, ISubject, ISystem, Result};
 
 use crate::{IoCmd, IoEngine, IoEvent};
 

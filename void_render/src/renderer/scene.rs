@@ -1,12 +1,15 @@
 use std::{iter, sync::Arc};
 
-use void_core::{ICmdReceiver, Result, ISubject, ISystem};
+use crate::{
+    model::{INDICES, VERTICES},
+    pipeline, IRenderer, RendererBuilder,
+};
+use void_core::{IBuilder, ICmdReceiver, ISubject, ISystem, Result};
 use wgpu::util::DeviceExt;
-use crate::{model::{INDICES, VERTICES}, IBuilder, IRenderer, RendererBuilder};
 
 use super::{RenderCmd, RenderEvent, WindowResource};
 
-struct ModelRendererBuilder <'a, P, R>
+struct ModelRendererBuilder<'a, P, R>
 where
     P: ISubject<E = RenderEvent>,
     R: ICmdReceiver<RenderCmd>,
@@ -16,15 +19,19 @@ where
     receiver: Option<R>,
 }
 
-impl<'a, P, R> IBuilder for ModelRendererBuilder<'a ,P, R>
-    where
+impl<'a, P, R> IBuilder for ModelRendererBuilder<'a, P, R>
+where
     P: ISubject<E = RenderEvent>,
-    R: ICmdReceiver<RenderCmd>
+    R: ICmdReceiver<RenderCmd>,
 {
     type Output = ModelRenderer<'a, P, R>;
 
     async fn build(self) -> Result<Self::Output> {
-        let ModelRendererBuilder { resource, subject, receiver } = self;
+        let ModelRendererBuilder {
+            resource,
+            subject,
+            receiver,
+        } = self;
 
         if resource.is_none() || subject.is_none() || receiver.is_none() {
             todo!("Fail Error")
@@ -34,32 +41,58 @@ impl<'a, P, R> IBuilder for ModelRendererBuilder<'a ,P, R>
         let subject = subject.unwrap();
         let receiver = receiver.unwrap();
 
-        let vertex_buffer = resource.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Model Renderer Vertex Buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
+        let vertex_buffer = resource
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Model Renderer Vertex Buffer"),
+                contents: bytemuck::cast_slice(VERTICES),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+
+        let index_buffer = resource
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Model Renderer INdex Buffer"),
+                contents: bytemuck::cast_slice(INDICES),
+                usage: wgpu::BufferUsages::INDEX,
+            });
+
+        let device = &resource.device;
+        let color_format = resource.config.format;
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Model Renderer Pipeline"),
+            bind_group_layouts: &[],
+            push_constant_ranges: &[],
         });
 
-        let index_buffer = resource.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Model Renderer INdex Buffer"),
-            contents: bytemuck::cast_slice(INDICES),
-            usage: wgpu::BufferUsages::INDEX,
-        });
+        let shader = wgpu::ShaderModuleDescriptor {
+            label: Some("Model Renderer Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+        };
 
-        Ok(ModelRenderer{
+        let pipeline = pipeline::create_render_pipeline(
+            &device,
+            &layout,
+            color_format,
+            None,
+            &[],
+            wgpu::PrimitiveTopology::TriangleList,
+            shader,
+        );
+
+        Ok(ModelRenderer {
             receiver,
             resource,
             index_buffer,
             vertex_buffer,
             subject,
+            pipeline,
         })
     }
-    
 }
 
 impl<'a, P, R> IBuilder for RendererBuilder<ModelRendererBuilder<'a, P, R>, ModelRenderer<'a, P, R>>
-
-    where
+where
     P: ISubject<E = RenderEvent>,
     R: ICmdReceiver<RenderCmd>,
 {
@@ -68,7 +101,6 @@ impl<'a, P, R> IBuilder for RendererBuilder<ModelRendererBuilder<'a, P, R>, Mode
     async fn build(self) -> Result<Self::Output> {
         self.builder.build().await
     }
-    
 }
 
 impl<'a, P, R> ISystem for ModelRenderer<'a, P, R>
@@ -104,6 +136,7 @@ where
     resource: Arc<WindowResource<'a>>,
     subject: P,
     receiver: R,
+    pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
 }
@@ -113,13 +146,13 @@ where
     P: ISubject<E = RenderEvent>,
     R: ICmdReceiver<RenderCmd>,
 {
-    fn render(&mut self) {
+    fn render(&mut self) -> std::result::Result<(), wgpu::SurfaceError> {
         let surface = &self.resource.surface;
         let device = &self.resource.device;
-        let pipeline = &self.resource.pipeline;
+        let pipeline = &self.pipeline;
         let queue = &self.resource.queue;
 
-        let output = surface.get_current_texture().unwrap();
+        let output = surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
             label: None,
             format: None,
@@ -164,27 +197,28 @@ where
 
         queue.submit(iter::once(encoder.finish()));
         output.present();
+        Ok(())
     }
 
     fn handle_cmd(&mut self, render_event: RenderCmd) {
         use RenderCmd::*;
         match render_event {
             Render => self.render(),
-        }
+        };
         self.subject.notify(RenderEvent::PassComplete);
         log::info!("Render Notified");
     }
 }
 
-impl<'a, P, R> IRenderer for ModelRenderer<'a, P, R> 
-    where
+impl<'a, P, R> IRenderer for ModelRenderer<'a, P, R>
+where
     P: ISubject<E = RenderEvent>,
-    R: ICmdReceiver<RenderCmd>
+    R: ICmdReceiver<RenderCmd>,
 {
-    async fn render(&mut self) {
-        self.render();
+    async fn render(&mut self) -> std::result::Result<(), wgpu::SurfaceError> {
+        self.render()
     }
-    fn render_blocking(&mut self) {
-        self.render();
+    fn render_blocking(&mut self) -> std::result::Result<(), wgpu::SurfaceError> {
+        self.render()
     }
 }
