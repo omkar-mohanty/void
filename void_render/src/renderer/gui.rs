@@ -3,27 +3,30 @@ use egui::{Context, Visuals};
 use egui_wgpu::Renderer;
 use egui_wgpu::ScreenDescriptor;
 use egui_winit::State;
+use winit::dpi::PhysicalSize;
 use std::ops::Deref;
 use std::sync::Arc;
-use void_core::Result;
+use void_core::{IGui, Result};
 
-use crate::{IBuilder, IRenderer, RendererBuilder, WindowResource};
+use crate::{renderer, IBuilder, IRenderer, RendererBuilder, WindowResource};
 
 #[derive(Default)]
-struct GuiRendererBuilder<'a> {
+struct GuiRendererBuilder<'a, T: IGui + Default + Send> {
     msaa_samples: Option<u32>,
     egui_context: Option<Context>,
     resource: Option<Arc<WindowResource<'a>>>,
+    gui: Option<T>,
 }
 
-impl<'a> IBuilder for GuiRendererBuilder<'a> {
-    type Output = GuiRenderer<'a>;
+impl<'a, T: IGui + Default + Send> IBuilder for GuiRendererBuilder<'a, T> {
+    type Output = GuiRenderer<'a, T>;
 
     async fn build(self) -> Result<Self::Output> {
         let GuiRendererBuilder {
             msaa_samples,
             egui_context,
             resource,
+            gui,
         } = self;
 
         let msaa_samples = msaa_samples.unwrap_or(2);
@@ -38,11 +41,16 @@ impl<'a> IBuilder for GuiRendererBuilder<'a> {
             None => todo!(),
         };
 
-        Ok(GuiRenderer::new(msaa_samples, egui_context, resource).await)
+        let gui = match gui {
+            Some(gui) => gui,
+            None => todo!(),
+        };
+
+        Ok(GuiRenderer::new(msaa_samples, egui_context, resource, gui).await)
     }
 }
 
-impl<'a> RendererBuilder<GuiRendererBuilder<'a>, GuiRenderer<'a>> {
+impl<'a, T: IGui + Default + Send> RendererBuilder<GuiRendererBuilder<'a, T>, GuiRenderer<'a, T>> {
     pub fn new() -> Self {
         Self {
             builder: GuiRendererBuilder::default(),
@@ -65,15 +73,15 @@ impl<'a> RendererBuilder<GuiRendererBuilder<'a>, GuiRenderer<'a>> {
     }
 }
 
-impl<'a> IBuilder for RendererBuilder<GuiRendererBuilder<'a>, GuiRenderer<'a>> {
-    type Output = GuiRenderer<'a>;
+impl<'a, T: IGui + Default + Send> IBuilder for RendererBuilder<GuiRendererBuilder<'a, T>, GuiRenderer<'a, T>> {
+    type Output = GuiRenderer<'a, T>;
 
     async fn build(self) -> Result<Self::Output> {
         self.builder.build().await
     }
 }
 
-impl IRenderer for GuiRenderer<'_> {
+impl<T: IGui> IRenderer for GuiRenderer<'_, T> {
     async fn render(&mut self) {
         todo!("Implement Gui Render Async");
     }
@@ -82,18 +90,21 @@ impl IRenderer for GuiRenderer<'_> {
     }
 }
 
-pub struct GuiRenderer<'a> {
+pub struct GuiRenderer<'a, T: IGui> {
     resource: Arc<WindowResource<'a>>,
     state: State,
     context: Context,
     renderer: Renderer,
+    config: wgpu::SurfaceConfiguration,
+    gui: T,
 }
 
-impl<'a> GuiRenderer<'a> {
+impl<'a, T: IGui> GuiRenderer<'a, T> {
     pub async fn new(
         msaa_samples: u32,
         egui_context: Context,
         resource: Arc<WindowResource<'a>>,
+        gui:T,
     ) -> Self {
         const BORDER_RADIUS: f32 = 2.0;
         let WindowResource {
@@ -120,12 +131,21 @@ impl<'a> GuiRenderer<'a> {
 
         let state = egui_winit::State::new(egui_context.clone(), viewport_id, &window, None, None);
 
+        let config = resource.config.clone();
+
         Self {
             resource,
             state,
             context: egui_context,
             renderer: egui_renderer,
+            gui,
+            config
         }
+    }
+
+    pub fn resize(&mut self, size: PhysicalSize<u32>) {
+        self.config.width = size.width;
+        self.config.height = size.height;
     }
 
     pub fn draw(
@@ -133,7 +153,6 @@ impl<'a> GuiRenderer<'a> {
         encoder: &mut wgpu::CommandEncoder,
         window_surface_view: &wgpu::TextureView,
         screen_descriptor: ScreenDescriptor,
-        run_ui: impl FnOnce(&Context),
     ) {
         let WindowResource {
             device,
@@ -143,8 +162,8 @@ impl<'a> GuiRenderer<'a> {
         } = self.resource.deref();
 
         let raw_input = self.state.take_egui_input(window);
-        let full_output = self.context.run(raw_input, |ui| {
-            run_ui(&self.context);
+        let full_output = self.context.run(raw_input, |_ui| {
+            self.gui.show(&self.context);
         });
 
         self.state

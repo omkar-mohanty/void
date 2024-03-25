@@ -1,6 +1,12 @@
 use std::future::Future;
 
+use egui::Context;
+
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+pub trait IGui {
+    fn show(&mut self, context: &Context);
+}
 
 pub trait IEvent {}
 
