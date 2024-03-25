@@ -69,8 +69,9 @@ where
         texture_view: &wgpu::TextureView,
         pixels_per_point: f32,
     ) {
+        let size = self.window.inner_size();
         let screen_descriptor = egui_wgpu::ScreenDescriptor {
-            size_in_pixels: [self.config.width, self.config.height],
+            size_in_pixels: [size.width, size.height],
             pixels_per_point,
         };
         self.gui_renderer.update(

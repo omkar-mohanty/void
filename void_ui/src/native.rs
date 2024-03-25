@@ -43,9 +43,6 @@ impl Gui for NativeGui {
         egui::Window::new("Streamline CFD")
             // .vscroll(true)
             .default_open(true)
-            .max_width(1000.0)
-            .max_height(800.0)
-            .default_width(800.0)
             .resizable(true)
             .anchor(Align2::LEFT_TOP, [0.0, 0.0])
             .show(&context, |ui| {
