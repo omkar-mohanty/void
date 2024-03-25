@@ -1,9 +1,11 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
 
+mod gui;
+
 use egui::{Context, RawInput};
 use std::{fmt::Display, sync::Arc};
-use void_core::{CmdReceiver, Command, Event, Result, Subject};
+use void_core::{ICmdReceiver, ICommand, IEvent, Result, ISubject};
 use winit::{event::WindowEvent, event_loop::EventLoop, window::Window};
 
 pub enum IoCmd {
@@ -18,7 +20,7 @@ impl Display for IoCmd {
     }
 }
 
-impl Command for IoCmd {}
+impl ICommand for IoCmd {}
 
 #[derive(Clone)]
 pub enum IoEvent {
@@ -29,29 +31,25 @@ pub enum IoEvent {
     Exit,
 }
 
-impl Event for IoEvent {}
+impl IEvent for IoEvent {}
 
 pub struct IoEngine<S, R>
 where
-    S: Subject<E = IoEvent>,
-    R: CmdReceiver<IoCmd>,
+    S: ISubject<E = IoEvent>,
+    R: ICmdReceiver<IoCmd>,
 {
     window: Arc<Window>,
-    state: egui_winit::State,
     subject: S,
     receiver: R,
 }
 
 impl<S, R> IoEngine<S, R>
 where
-    S: Subject<E = IoEvent>,
-    R: CmdReceiver<IoCmd>,
+    S: ISubject<E = IoEvent>,
+    R: ICmdReceiver<IoCmd>,
 {
     pub fn new(context: Context, window: Arc<Window>, subject: S, receiver: R) -> Self {
-        let viewport_id = context.viewport_id();
-        let state = egui_winit::State::new(context.clone(), viewport_id, &window, None, None);
         Self {
-            state,
             subject,
             window,
             receiver,
@@ -84,16 +82,12 @@ where
             Event::WindowEvent { window_id, event } if window_id == self.window.id() => {
                 if !self.input(&self.window, &event) {
                     self.handle_window_event(event)?;
-                    let full_input = self.state.take_egui_input(&self.window);
-                    self.subject.notify(IoEvent::Input(full_input));
                 }
             }
             _ => {}
         }
         Ok(())
     }
-
-    fn start_loop(mut self, event_loop: EventLoop<()>) {}
 
     fn handle_cmd(&mut self, cmd: IoCmd) -> Result<()> {
         use IoCmd::*;

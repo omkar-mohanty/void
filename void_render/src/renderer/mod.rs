@@ -1,160 +1,162 @@
 use core::fmt;
-use std::{fmt::Write, iter, sync::Arc};
+use std::{future::Future, sync::Arc};
 
-use crate::gui::GuiRenderer;
-use egui::FullOutput;
-use void_core::{CmdReceiver, Command, Event, Result, Subject};
+use void_core::{ICommand, IEvent, Result};
 use winit::window::Window;
 
-mod model;
-pub mod pipeline;
+use self::model::Vertex;
 
-#[cfg(not(target_arch = "wasm32"))]
-mod native;
+pub mod gui;
+pub mod model;
+pub mod pipeline;
+pub mod scene;
 
 #[derive(Clone)]
 pub enum RenderCmd {
-    GuiOutput(FullOutput),
     Render,
-    Resize { height: u32, width: u32 },
 }
 
 impl fmt::Display for RenderCmd {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use RenderCmd::*;
         match self {
-            GuiOutput(_) => f.write_str("GuiOutput"),
             Render => f.write_str("Render"),
-            Resize { .. } => f.write_str("Resize"),
         }
     }
 }
 
-impl Command for RenderCmd {}
+impl ICommand for RenderCmd {}
 
 pub enum RenderEvent {
     PassComplete,
 }
 
-impl Event for RenderEvent {}
+impl IEvent for RenderEvent {}
 
-pub struct RenderEngine<'a, P, R>
-where
-    P: Subject<E = RenderEvent>,
-    R: CmdReceiver<RenderCmd>,
-{
-    window: Arc<Window>,
-    surface: wgpu::Surface<'a>,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    config: wgpu::SurfaceConfiguration,
-    pipeline: wgpu::RenderPipeline,
-    gui_renderer: GuiRenderer,
-    subject: P,
-    receiver: R,
-    full_output: Option<FullOutput>,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
+pub trait IRenderer {
+    fn render(&mut self) -> impl Future<Output = ()>;
+    fn render_blocking(&mut self);
 }
 
-impl<'a, P, R> RenderEngine<'a, P, R>
-where
-    P: Subject<E = RenderEvent>,
-    R: CmdReceiver<RenderCmd>,
-{
-    fn update_gui(
-        &mut self,
-        full_output: FullOutput,
-        encoder: &mut wgpu::CommandEncoder,
-        texture_view: &wgpu::TextureView,
-        pixels_per_point: f32,
-    ) {
-        let size = self.window.inner_size();
-        let screen_descriptor = egui_wgpu::ScreenDescriptor {
-            size_in_pixels: [size.width, size.height],
-            pixels_per_point,
-        };
-        self.gui_renderer.update(
-            &self.device,
-            &self.queue,
-            encoder,
-            &texture_view,
-            screen_descriptor,
-            full_output,
-        );
-    }
+pub trait IBuilder {
+    type Output;
 
-    fn render(&mut self) {
-        let output = self.surface.get_current_texture().unwrap();
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
-            label: None,
-            format: None,
-            dimension: None,
-            aspect: wgpu::TextureAspect::All,
-            base_mip_level: 0,
-            mip_level_count: None,
-            base_array_layer: 0,
-            array_layer_count: None,
+    fn build(self) -> impl Future<Output = Result<Self::Output>> + Send;
+}
+
+pub struct RendererBuilder<B, T>
+where
+    B: IBuilder<Output = T>,
+    T: IRenderer,
+{
+    builder: B,
+}
+
+pub struct WindowResource<'a> {
+    pub surface: wgpu::Surface<'a>,
+    pub device: wgpu::Device,
+    pub adapter: wgpu::Adapter,
+    pub queue: wgpu::Queue,
+    pub config: wgpu::SurfaceConfiguration,
+    pub pipeline: wgpu::RenderPipeline,
+    pub window: Arc<Window>,
+}
+
+impl<'a> WindowResource<'a> {
+    pub async fn new(window: Arc<Window>) -> Arc<Self> {
+        let size = window.inner_size();
+
+        // The instance is a handle to our GPU
+        // BackendBit::PRIMARY => Vulkan + Metal + DX12 + Browser WebGPU
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            ..Default::default()
         });
 
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Encoder"),
-            });
+        // # Safety
+        //
+        // The surface needs to live as long as the window that created it.
+        // State owns the window so this should be safe.
+        let surface = instance.create_surface(Arc::clone(&window)).unwrap();
 
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::default(),
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+            })
+            .await
+            .unwrap();
+
+        let (device, queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: None,
+                    required_features: wgpu::Features::empty(),
+                    // WebGL doesn't support all of wgpu's features, so if
+                    // we're building for the web we'll have to disable some.
+                    required_limits: if cfg!(target_arch = "wasm32") {
+                        wgpu::Limits::downlevel_webgl2_defaults()
+                    } else {
+                        wgpu::Limits::default()
                     },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
+                },
+                None, // Trace path
+            )
+            .await
+            .unwrap();
 
-            render_pass.set_pipeline(&self.pipeline);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw(0..3, 0..1);
-        }
+        let surface_caps = surface.get_capabilities(&adapter);
+        // Shader code in this tutorial assumes an Srgb surface texture. Using a different
+        // one will result all the colors comming out darker. If you want to support non
+        // Srgb surfaces, you'll need to account for that when drawing to the frame.
+        let surface_format = surface_caps
+            .formats
+            .iter()
+            .copied()
+            .find(|f| f.is_srgb())
+            .unwrap_or(surface_caps.formats[0]);
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: surface_format,
+            width: size.width,
+            height: size.height,
+            present_mode: surface_caps.present_modes[0],
+            alpha_mode: surface_caps.alpha_modes[0],
+            view_formats: vec![],
+            desired_maximum_frame_latency: 2,
+        };
+        surface.configure(&device, &config);
 
-        if self.full_output.is_some() {
-            let full_output = self.full_output.take().unwrap();
-            self.update_gui(
-                full_output,
-                &mut encoder,
-                &view,
-                self.window.scale_factor() as f32,
-            );
-        }
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Render Pipeline Layout"),
+            bind_group_layouts: &[],
+            push_constant_ranges: &[],
+        });
 
-        self.queue.submit(iter::once(encoder.finish()));
-        output.present();
-    }
+        let shader = wgpu::ShaderModuleDescriptor {
+            label: Some("Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+        };
 
-    fn handle_cmd(&mut self, render_event: RenderCmd) {
-        use RenderCmd::*;
-        match render_event {
-            Resize { height, width } => {
-                self.config.height = height;
-                self.config.width = width;
-            }
-            GuiOutput(full_output) => self.full_output = Some(full_output),
-            Render => self.render(),
-        }
-        self.subject.notify(RenderEvent::PassComplete);
-        log::info!("Render Notified");
+        let pipeline = pipeline::create_render_pipeline(
+            &device,
+            &layout,
+            config.format,
+            None,
+            &[Vertex::desc()],
+            wgpu::PrimitiveTopology::TriangleList,
+            shader,
+        );
+
+        Arc::new(Self {
+            adapter,
+            surface,
+            device,
+            queue,
+            config,
+            pipeline,
+            window,
+        })
     }
 }

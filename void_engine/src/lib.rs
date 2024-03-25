@@ -1,48 +1,24 @@
-use void_core::{Observer, Subject};
+use void_core::{IObserver, ISubject};
 use void_io::IoEvent;
 use void_render::RenderEvent;
-use void_ui::GuiEvent;
 
 pub mod gui;
 pub mod io;
 pub mod render;
 
 #[derive(Default)]
-pub struct GuiEngineSubject {
-    observers: Vec<Box<dyn Observer<GuiEvent>>>,
-}
-
-impl Subject for GuiEngineSubject {
-    type E = GuiEvent;
-
-    fn attach(&mut self, observer: impl Observer<Self::E> + 'static) {
-        self.observers.push(Box::new(observer));
-    }
-
-    fn detach(&mut self, _observer: impl Observer<Self::E> + 'static) {}
-
-    fn notify(&self, event: Self::E) {
-        for obs in &self.observers {
-            if let Err(msg) = obs.update(&event) {
-                log::info!("GuiEngineSubject : {msg}");
-            }
-        }
-    }
-}
-
-#[derive(Default)]
 pub struct IoEngineSubject {
-    observers: Vec<Box<dyn Observer<IoEvent>>>,
+    observers: Vec<Box<dyn IObserver<IoEvent>>>,
 }
 
-impl Subject for IoEngineSubject {
+impl ISubject for IoEngineSubject {
     type E = IoEvent;
 
-    fn attach(&mut self, observer: impl Observer<IoEvent> + 'static) {
+    fn attach(&mut self, observer: impl IObserver<IoEvent> + 'static) {
         self.observers.push(Box::new(observer));
     }
 
-    fn detach(&mut self, _observer: impl Observer<IoEvent>) {}
+    fn detach(&mut self, _observer: impl IObserver<IoEvent>) {}
 
     fn notify(&self, event: Self::E) {
         for obs in &self.observers {
@@ -55,17 +31,17 @@ impl Subject for IoEngineSubject {
 
 #[derive(Default)]
 pub struct RenderEngineSubject {
-    observers: Vec<Box<dyn Observer<RenderEvent>>>,
+    observers: Vec<Box<dyn IObserver<RenderEvent>>>,
 }
 
-impl Subject for RenderEngineSubject {
+impl ISubject for RenderEngineSubject {
     type E = RenderEvent;
 
-    fn attach(&mut self, observer: impl Observer<RenderEvent> + 'static) {
+    fn attach(&mut self, observer: impl IObserver<RenderEvent> + 'static) {
         self.observers.push(Box::new(observer));
     }
 
-    fn detach(&mut self, _observer: impl Observer<RenderEvent>) {}
+    fn detach(&mut self, _observer: impl IObserver<RenderEvent>) {}
 
     fn notify(&self, event: Self::E) {
         for obs in &self.observers {

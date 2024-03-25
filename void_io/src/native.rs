@@ -1,11 +1,11 @@
-use void_core::{CmdReceiver, Result, Subject, System};
+use void_core::{ICmdReceiver, Result,ISubject, ISystem};
 
 use crate::{IoCmd, IoEngine, IoEvent};
 
-impl<S, R> System for IoEngine<S, R>
+impl<S, R> ISystem for IoEngine<S, R>
 where
-    S: Subject<E = IoEvent>,
-    R: CmdReceiver<IoCmd>,
+    S: ISubject<E = IoEvent>,
+    R: ICmdReceiver<IoCmd>,
 {
     type C = IoCmd;
 

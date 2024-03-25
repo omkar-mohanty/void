@@ -1,13 +1,13 @@
 use egui::Context;
-use void_core::{CmdReceiver, Result, Subject, System};
+use void_core::{ICmdReceiver, Result, ISubject, ISystem};
 
 use crate::{Gui, GuiCmd, GuiEngine, GuiEvent};
 
-impl<T, R, S> System for GuiEngine<T, R, S>
+impl<T, R, S> ISystem for GuiEngine<T, R, S>
 where
     T: Gui + Send,
-    R: CmdReceiver<GuiCmd>,
-    S: Subject<E = GuiEvent> + Send,
+    R: ICmdReceiver<GuiCmd>,
+    S: ISubject<E = GuiEvent> + Send,
 {
     type C = GuiCmd;
     async fn run(&mut self) -> Result<()> {
@@ -22,8 +22,8 @@ where
 impl<T, R, S> GuiEngine<T, R, S>
 where
     T: Gui,
-    R: CmdReceiver<GuiCmd>,
-    S: Subject<E = GuiEvent>,
+    R: ICmdReceiver<GuiCmd>,
+    S: ISubject<E = GuiEvent>,
 {
     pub fn new(context: Context, receiver: R, subject: S, gui: T) -> Self {
         Self {
