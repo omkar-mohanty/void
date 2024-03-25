@@ -1,14 +1,21 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
 
-
 use egui::{Context, RawInput};
-use std::sync::Arc;
+use std::{fmt::Display, sync::Arc};
 use void_core::{CmdReceiver, Command, Event, Result, Subject};
-use winit::{event::WindowEvent, window::Window};
+use winit::{event::WindowEvent, event_loop::EventLoop, window::Window};
 
 pub enum IoCmd {
     WindowEvent(winit::event::Event<()>),
+}
+
+impl Display for IoCmd {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IoCmd::WindowEvent(_) => f.write_str("WindowEvent"),
+        }
+    }
 }
 
 impl Command for IoCmd {}
@@ -18,6 +25,7 @@ pub enum IoEvent {
     Output,
     Input(RawInput),
     Resized { height: u32, width: u32 },
+    Redraw,
     Exit,
 }
 
@@ -60,7 +68,10 @@ where
         match window_event {
             WindowEvent::Resized(physical_size) => {
                 let (height, width) = (physical_size.height, physical_size.width);
-                self.subject.notify(IoEvent::Resized { height, width })?;
+                self.subject.notify(IoEvent::Resized { height, width });
+            }
+            WindowEvent::RedrawRequested => {
+                self.subject.notify(IoEvent::Redraw);
             }
             _ => {}
         }
@@ -74,13 +85,15 @@ where
                 if !self.input(&self.window, &event) {
                     self.handle_window_event(event)?;
                     let full_input = self.state.take_egui_input(&self.window);
-                    self.subject.notify(IoEvent::Input(full_input))?;
+                    self.subject.notify(IoEvent::Input(full_input));
                 }
             }
             _ => {}
         }
         Ok(())
     }
+
+    fn start_loop(mut self, event_loop: EventLoop<()>) {}
 
     fn handle_cmd(&mut self, cmd: IoCmd) -> Result<()> {
         use IoCmd::*;

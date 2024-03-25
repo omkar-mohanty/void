@@ -12,9 +12,8 @@ impl Observer<IoEvent> for GuiObserver {
     fn update(&self, event: &IoEvent) -> Result<()> {
         if let IoEvent::Input(input) = event {
             self.cmd_sender
-                .send_blocking(GuiCmd::Input(input.clone()))?;
+                .send_blocking(GuiCmd::Input(input.clone()))?
         }
-
         Ok(())
     }
 }
@@ -22,9 +21,7 @@ impl Observer<IoEvent> for GuiObserver {
 impl Observer<RenderEvent> for GuiObserver {
     fn update(&self, event: &RenderEvent) -> Result<()> {
         match event {
-            RenderEvent::PassComplete => {
-                self.cmd_sender.send_blocking(GuiCmd::Pass)?;
-            }
+            RenderEvent::PassComplete => self.cmd_sender.send_blocking(GuiCmd::Pass)?,
         }
         Ok(())
     }

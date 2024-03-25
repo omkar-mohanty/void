@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use egui::{Context, FullOutput, RawInput};
 use void_core::{CmdReceiver, Command, Event, Result, Subject};
 
@@ -23,6 +25,16 @@ pub enum GuiCmd {
     Pass,
 }
 
+impl Display for GuiCmd {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use GuiCmd::*;
+        match self {
+            Input(_) => f.write_str("Input"),
+            Pass => f.write_str("Pass"),
+        }
+    }
+}
+
 impl Command for GuiCmd {}
 
 pub struct GuiEngine<T, R, S>
@@ -43,16 +55,15 @@ where
     R: CmdReceiver<GuiCmd>,
     S: Subject<E = GuiEvent>,
 {
-    fn handle_cmd(&mut self, cmd: GuiCmd) -> Result<()> {
+    fn handle_cmd(&mut self, cmd: GuiCmd) {
         use GuiCmd::*;
         match cmd {
             Input(raw_input) => {
                 let output = self.update(raw_input);
-                self.subject.notify(GuiEvent::Output(output))?;
+                self.subject.notify(GuiEvent::Output(output));
             }
             Pass => {}
         }
-        Ok(())
     }
     fn update(&mut self, raw_input: RawInput) -> FullOutput {
         self.context.run(raw_input, |_| {

@@ -13,7 +13,7 @@ where
     async fn run(&mut self) -> Result<()> {
         loop {
             if let Some(cmd) = self.receiver.recv().await {
-                self.handle_cmd(cmd)?;
+                self.handle_cmd(cmd);
             }
         }
     }

@@ -12,7 +12,7 @@ pub trait Subject: Send {
     type E: Event;
     fn attach(&mut self, observer: impl Observer<Self::E> + 'static);
     fn detach(&mut self, observer: impl Observer<Self::E> + 'static);
-    fn notify(&self, event: Self::E) -> Result<()>;
+    fn notify(&self, event: Self::E);
 }
 
 pub trait Command {}

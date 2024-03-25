@@ -17,6 +17,7 @@ impl Observer<IoEvent> for RendererObserver {
                 height: *height,
                 width: *width,
             })?,
+            Redraw => self.cmd_sender.send_blocking(RenderCmd::Render)?,
             _ => {}
         }
 

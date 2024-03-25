@@ -1,4 +1,4 @@
-use void_core::{Observer, Result, Subject};
+use void_core::{Observer, Subject};
 use void_io::IoEvent;
 use void_render::RenderEvent;
 use void_ui::GuiEvent;
@@ -21,12 +21,12 @@ impl Subject for GuiEngineSubject {
 
     fn detach(&mut self, _observer: impl Observer<Self::E> + 'static) {}
 
-    fn notify(&self, event: Self::E) -> Result<()> {
+    fn notify(&self, event: Self::E) {
         for obs in &self.observers {
-            obs.update(&event)?
+            if let Err(msg) = obs.update(&event) {
+                log::info!("GuiEngineSubject : {msg}");
+            }
         }
-
-        Ok(())
     }
 }
 
@@ -44,12 +44,12 @@ impl Subject for IoEngineSubject {
 
     fn detach(&mut self, _observer: impl Observer<IoEvent>) {}
 
-    fn notify(&self, event: Self::E) -> Result<()> {
+    fn notify(&self, event: Self::E) {
         for obs in &self.observers {
-            obs.update(&event)?
+            if let Err(msg) = obs.update(&event) {
+                log::info!("IoEngineSubject : {msg}");
+            }
         }
-
-        Ok(())
     }
 }
 
@@ -67,11 +67,11 @@ impl Subject for RenderEngineSubject {
 
     fn detach(&mut self, _observer: impl Observer<RenderEvent>) {}
 
-    fn notify(&self, event: Self::E) -> Result<()> {
+    fn notify(&self, event: Self::E) {
         for obs in &self.observers {
-            obs.update(&event)?;
+            if let Err(msg) = obs.update(&event) {
+                log::info!("RenderEngineSubject : {msg}");
+            }
         }
-
-        Ok(())
     }
 }

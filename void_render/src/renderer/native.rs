@@ -1,12 +1,11 @@
 use std::sync::Arc;
-
-use crate::{gui::GuiRenderer, RenderCmd};
+use crate::{gui::GuiRenderer, RenderCmd, renderer::model::{VERTICES, INDICES}};
 use crate::{RenderEngine, RenderEvent};
 use egui::Context;
 use void_core::{CmdReceiver, Result, Subject, System};
 use winit::window::Window;
-
 use super::model::Vertex;
+use wgpu::util::DeviceExt;
 
 impl<'a, P, R> System for RenderEngine<'a, P, R>
 where
@@ -16,16 +15,18 @@ where
     type C = RenderCmd;
 
     async fn run(&mut self) -> Result<()> {
-        if let Some(cmd) = self.receiver.recv().await {
-            self.handle_cmd(cmd)?;
+        loop {
+            if let Some(cmd) = self.receiver.recv().await {
+                log::info!("Render Engine Received : {cmd}");
+                self.handle_cmd(cmd);
+            }
         }
-
-        Ok(())
     }
 
     fn run_blocking(&mut self) -> Result<()> {
         if let Some(cmd) = self.receiver.recv_blockding() {
-            self.handle_cmd(cmd)?;
+            log::info!("Render Engine Received : {cmd}");
+            self.handle_cmd(cmd);
         }
         Ok(())
     }
@@ -118,7 +119,20 @@ where
             shader,
         );
 
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            contents: bytemuck::cast_slice(VERTICES),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Index Buffer"),
+            contents: bytemuck::cast_slice(INDICES),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+
         Self {
+            vertex_buffer,
+            index_buffer,
             window,
             config,
             gui_renderer,

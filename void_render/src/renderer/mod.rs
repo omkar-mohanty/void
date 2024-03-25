@@ -1,4 +1,5 @@
-use std::{iter, sync::Arc};
+use core::fmt;
+use std::{fmt::Write, iter, sync::Arc};
 
 use crate::gui::GuiRenderer;
 use egui::FullOutput;
@@ -16,6 +17,17 @@ pub enum RenderCmd {
     GuiOutput(FullOutput),
     Render,
     Resize { height: u32, width: u32 },
+}
+
+impl fmt::Display for RenderCmd {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use RenderCmd::*;
+        match self {
+            GuiOutput(_) => f.write_str("GuiOutput"),
+            Render => f.write_str("Render"),
+            Resize { .. } => f.write_str("Resize"),
+        }
+    }
 }
 
 impl Command for RenderCmd {}
@@ -41,6 +53,8 @@ where
     subject: P,
     receiver: R,
     full_output: Option<FullOutput>,
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
 }
 
 impl<'a, P, R> RenderEngine<'a, P, R>
@@ -110,6 +124,8 @@ where
             });
 
             render_pass.set_pipeline(&self.pipeline);
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw(0..3, 0..1);
         }
 
@@ -127,7 +143,7 @@ where
         output.present();
     }
 
-    fn handle_cmd(&mut self, render_event: RenderCmd) -> Result<()> {
+    fn handle_cmd(&mut self, render_event: RenderCmd) {
         use RenderCmd::*;
         match render_event {
             Resize { height, width } => {
@@ -137,7 +153,7 @@ where
             GuiOutput(full_output) => self.full_output = Some(full_output),
             Render => self.render(),
         }
-        self.subject.notify(RenderEvent::PassComplete)?;
-        Ok(())
+        self.subject.notify(RenderEvent::PassComplete);
+        log::info!("Render Notified");
     }
 }
