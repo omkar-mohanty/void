@@ -2,12 +2,57 @@ use std::{iter, sync::Arc};
 
 use crate::{
     model::{Vertex, INDICES, VERTICES},
-    pipeline, IRenderer, RendererBuilder,
+    pipeline, Draw, IRenderer, RendererBuilder,
 };
 use void_core::{IBuilder, IEventReceiver, ISubject, ISystem, Result};
 use wgpu::util::DeviceExt;
 
 use super::{RenderCmd, RenderEvent, WindowResource};
+
+impl<'a, P, R> Draw for ModelRenderer<'a, P, R>
+where
+    P: ISubject<E = RenderEvent>,
+    R: IEventReceiver<RenderCmd>,
+{
+    fn draw(&mut self, view: Arc<wgpu::TextureView>) {
+        let device = &self.resource.device;
+        let pipeline = &self.pipeline;
+        let queue = &self.resource.queue;
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Encoder"),
+        });
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            render_pass.set_pipeline(pipeline);
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw(0..3, 0..1);
+        }
+
+        queue.submit(iter::once(encoder.finish()));
+    }
+}
 
 pub struct ModelRendererBuilder<'a, P, R>
 where
@@ -191,69 +236,15 @@ where
     pub fn builder() -> RendererBuilder<ModelRendererBuilder<'a, P, R>, Self> {
         RendererBuilder::new_model()
     }
-    fn render(&mut self) -> std::result::Result<(), wgpu::SurfaceError> {
-        let surface = &self.resource.surface;
-        let device = &self.resource.device;
-        let pipeline = &self.pipeline;
-        let queue = &self.resource.queue;
-
-        let output = surface.get_current_texture()?;
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
-            label: None,
-            format: None,
-            dimension: None,
-            aspect: wgpu::TextureAspect::All,
-            base_mip_level: 0,
-            mip_level_count: None,
-            base_array_layer: 0,
-            array_layer_count: None,
-        });
-
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Encoder"),
-        });
-
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
-
-            render_pass.set_pipeline(pipeline);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw(0..3, 0..1);
-        }
-
-        queue.submit(iter::once(encoder.finish()));
-        output.present();
-        Ok(())
-    }
-
     fn handle_cmd(
         &mut self,
         render_event: RenderCmd,
     ) -> std::result::Result<(), wgpu::SurfaceError> {
         use RenderCmd::*;
         match render_event {
-            Render => self.render()?,
+            Render => {},
         };
-        self.subject.notify(RenderEvent::PassComplete);
+        self.subject.notify(RenderEvent::PassComplete).unwrap();
         log::info!("Render Notified");
         Ok(())
     }
@@ -265,9 +256,10 @@ where
     R: IEventReceiver<RenderCmd>,
 {
     async fn render(&mut self) -> std::result::Result<(), wgpu::SurfaceError> {
-        self.render()
+        todo!("Implement Standalone Renderer");
     }
+
     fn render_blocking(&mut self) -> std::result::Result<(), wgpu::SurfaceError> {
-        self.render()
+        todo!("Implement Standalone Renderer");
     }
 }

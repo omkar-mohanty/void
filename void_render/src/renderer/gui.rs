@@ -1,4 +1,4 @@
-use crate::{IRenderer, RendererBuilder, WindowResource};
+use crate::{Draw, IRenderer, RendererBuilder, WindowResource};
 use egui::epaint::Shadow;
 use egui::{Context, Visuals};
 use egui_wgpu::Renderer;
@@ -118,7 +118,7 @@ impl<T: IGui + Send + Default> IRenderer for GuiRenderer<'_, T> {
             size_in_pixels: [self.config.width, self.config.height],
             pixels_per_point: self.resource.window.scale_factor() as f32,
         };
-        self.draw(&mut encoder, &view, screen_descriptor);
+        self.draw_ui(&mut encoder, &view, screen_descriptor);
         self.resource
             .queue
             .submit(std::iter::once(encoder.finish()));
@@ -182,7 +182,7 @@ impl<'a, T: IGui + Send + Default> GuiRenderer<'a, T> {
         }
     }
 
-    pub fn draw(
+    pub fn draw_ui(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         window_surface_view: &wgpu::TextureView,
@@ -251,5 +251,24 @@ impl<'a, T: IGui + Send + Default> GuiRenderer<'a, T> {
     pub fn input(&self, event: &WindowEvent) -> bool {
         self.resource.window.request_redraw();
         false
+    }
+}
+
+impl<'a, T: IGui + Send + Default> Draw for GuiRenderer<'a, T> {
+    fn draw(&mut self, view: Arc<wgpu::TextureView>) {
+        let mut encoder =
+            self.resource
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Gui Command Encoder"),
+                });
+        let screen_descriptor = ScreenDescriptor {
+            size_in_pixels: [self.config.width, self.config.height],
+            pixels_per_point: self.resource.window.scale_factor() as f32,
+        };
+        self.draw_ui(&mut encoder, &view, screen_descriptor);
+        self.resource
+            .queue
+            .submit(std::iter::once(encoder.finish()));
     }
 }

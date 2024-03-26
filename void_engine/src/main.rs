@@ -3,7 +3,8 @@ use void_core::{IBuilder, IEventSender, ISubject, ISystem};
 use void_engine::{App, AppEvent, AppSubject, AppWindowEvent};
 use void_native::create_mpsc_channel;
 use void_render::{
-    gui::GuiRenderer, scene::ModelRenderer, IRenderer, RenderCmd, RenderSubject, WindowResource,
+    gui::GuiRenderer, scene::ModelRenderer, IRenderer, RenderCmd, RenderSubject, RendererEngine,
+    WindowResource,
 };
 use void_ui::VoidUi;
 use winit::{event::WindowEvent, event_loop::EventLoop, window::WindowBuilder};
@@ -36,11 +37,8 @@ async fn init<'a>() -> anyhow::Result<()> {
         .await
         .unwrap();
 
-    tokio::spawn(async move {
-        if let Err(msg) = model_renderer.run().await {
-            log::error!("{}", msg);
-        }
-    });
+    let mut render_engine =
+        RendererEngine::new(gui_renderer, model_renderer, Arc::clone(&window_resource));
 
     let mut app_subject = AppSubject::default();
     app_subject.attach(AppEvent::Window(AppWindowEvent::Redraw), move || {
@@ -53,21 +51,24 @@ async fn init<'a>() -> anyhow::Result<()> {
     };
 
     app.run(event_loop, |event| {
-use winit::event::Event;
+        use winit::event::Event;
         match event {
-            Event::WindowEvent { event, .. }  => {
-                gui_renderer.gather_input(&event);
+            Event::WindowEvent { event, .. } => {
+                render_engine.gather_input(event);
                 match event {
                     WindowEvent::RedrawRequested => {
                         log::info!("Redraw");
-                        gui_renderer.render_blocking().unwrap();
+                        if let Err(msg) = render_engine.render_blocking() {
+                            log::error!("{msg}");
+                        }
                     }
                     _ => {}
                 }
             }
             _ => {}
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     Ok(())
 }

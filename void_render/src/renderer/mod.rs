@@ -1,9 +1,11 @@
 use core::fmt;
-use std::{future::Future, marker::PhantomData, sync::Arc};
+use std::{future::Future, sync::Arc};
 
 use egui::ahash::HashMap;
-use void_core::{IBuilder, IEvent, IEventReceiver, IObserver, ISubject};
+use void_core::{IBuilder, IEvent, IEventReceiver, IGui, IObserver, ISubject};
 use winit::window::Window;
+
+use self::{gui::GuiRenderer, scene::ModelRenderer};
 
 pub mod gui;
 pub mod model;
@@ -13,6 +15,72 @@ pub mod scene;
 #[derive(Clone, Copy, Hash, Eq, PartialEq)]
 pub enum RenderCmd {
     Render,
+}
+
+pub trait Draw {
+    fn draw(&mut self, surface: Arc<wgpu::TextureView>);
+}
+
+pub struct RendererEngine<'a, G, P, R>
+where
+    G: IGui + Send + Default,
+    P: ISubject<E = RenderEvent>,
+    R: IEventReceiver<RenderCmd>,
+{
+    window_resource: Arc<WindowResource<'a>>,
+    gui_renderer: GuiRenderer<'a, G>,
+    model_renderer: ModelRenderer<'a, P, R>,
+}
+
+impl<'a, G, P, R> RendererEngine<'a, G, P, R>
+where
+    G: IGui + Send + Default,
+    P: ISubject<E = RenderEvent>,
+    R: IEventReceiver<RenderCmd>,
+{
+    pub fn new(
+        gui_renderer: GuiRenderer<'a, G>,
+        model_renderer: ModelRenderer<'a, P, R>,
+        window_resource: Arc<WindowResource<'a>>,
+    ) -> Self {
+        Self {
+            gui_renderer,
+            model_renderer,
+            window_resource,
+        }
+    }
+
+    pub fn gather_input(&mut self, event: &winit::event::WindowEvent) {
+        self.gui_renderer.gather_input(event);
+    }
+}
+
+impl<'a, G, P, R> IRenderer for RendererEngine<'a, G, P, R>
+where
+    G: IGui + Send + Default,
+    P: ISubject<E = RenderEvent>,
+    R: IEventReceiver<RenderCmd>,
+{
+    async fn render(&mut self) -> std::result::Result<(), wgpu::SurfaceError> {
+        unimplemented!()
+    }
+    fn render_blocking(&mut self) -> std::result::Result<(), wgpu::SurfaceError> {
+        let output = self.window_resource.surface.get_current_texture()?;
+        let view = Arc::new(output.texture.create_view(&wgpu::TextureViewDescriptor {
+            label: None,
+            format: None,
+            dimension: None,
+            aspect: wgpu::TextureAspect::All,
+            base_mip_level: 0,
+            mip_level_count: None,
+            base_array_layer: 0,
+            array_layer_count: None,
+        }));
+        self.model_renderer.draw(Arc::clone(&view));
+        self.gui_renderer.draw(Arc::clone(&view));
+        output.present();
+        Ok(())
+    }
 }
 
 impl fmt::Display for RenderCmd {
@@ -122,7 +190,7 @@ impl<'a> WindowResource<'a> {
             .unwrap();
 
         let surface_caps = surface.get_capabilities(&adapter);
-        // Shader code in this tutorial assumes an Srgb surface texture. Using a different
+        // Assumes an Srgb surface texture. Using a different
         // one will result all the colors comming out darker. If you want to support non
         // Srgb surfaces, you'll need to account for that when drawing to the frame.
         let surface_format = surface_caps
