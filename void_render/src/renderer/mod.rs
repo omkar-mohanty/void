@@ -1,19 +1,16 @@
 use core::fmt;
-use std::{future::Future, sync::Arc};
+use std::{future::Future, marker::PhantomData, sync::Arc};
 
-use void_core::{IBuilder, ICommand, IEvent, Locked};
+use egui::ahash::HashMap;
+use void_core::{IBuilder, IEvent, IEventReceiver, IObserver, ISubject};
 use winit::window::Window;
-
-use self::model::Vertex;
 
 pub mod gui;
 pub mod model;
 pub mod pipeline;
 pub mod scene;
 
-type LockedWindowResource<'a> = Locked<WindowResource<'a>>;
-
-#[derive(Clone)]
+#[derive(Clone, Copy, Hash, Eq, PartialEq)]
 pub enum RenderCmd {
     Render,
 }
@@ -27,8 +24,9 @@ impl fmt::Display for RenderCmd {
     }
 }
 
-impl ICommand for RenderCmd {}
+impl IEvent for RenderCmd {}
 
+#[derive(Hash, Clone, Copy, Eq, PartialEq)]
 pub enum RenderEvent {
     PassComplete,
 }
@@ -38,6 +36,28 @@ impl IEvent for RenderEvent {}
 pub trait IRenderer {
     fn render(&mut self) -> impl Future<Output = std::result::Result<(), wgpu::SurfaceError>>;
     fn render_blocking(&mut self) -> std::result::Result<(), wgpu::SurfaceError>;
+}
+
+#[derive(Default)]
+pub struct RenderSubject {
+    observers: HashMap<RenderEvent, Vec<Box<dyn IObserver<RenderEvent>>>>,
+}
+
+impl ISubject for RenderSubject {
+    type E = RenderEvent;
+    fn attach(&mut self, event: Self::E, observer: impl IObserver<Self::E> + 'static) {
+        let obs = self.observers.entry(event).or_default();
+        obs.push(Box::new(observer));
+    }
+
+    fn notify(&self, event: Self::E) -> void_core::Result<()> {
+        let obs = self.observers.get(&event).unwrap();
+        for o in obs {
+            o.update(event)?;
+        }
+        Ok(())
+    }
+    fn detach(&mut self, _event: Self::E, _observer: impl IObserver<Self::E> + 'static) {}
 }
 
 pub struct RendererBuilder<B, T>
@@ -122,27 +142,6 @@ impl<'a> WindowResource<'a> {
             desired_maximum_frame_latency: 2,
         };
         surface.configure(&device, &config);
-
-        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[],
-            push_constant_ranges: &[],
-        });
-
-        let shader = wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-        };
-
-        let pipeline = pipeline::create_render_pipeline(
-            &device,
-            &layout,
-            config.format,
-            None,
-            &[Vertex::desc()],
-            wgpu::PrimitiveTopology::TriangleList,
-            shader,
-        );
 
         Arc::new(Self {
             adapter,

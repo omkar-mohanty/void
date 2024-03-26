@@ -1,7 +1,10 @@
-use anyhow::Ok;
 use std::sync::Arc;
-use void_core::IBuilder;
-use void_render::{IRenderer, RendererBuilder, WindowResource};
+use void_core::{IBuilder, IEventSender, ISubject, ISystem};
+use void_engine::{App, AppEvent, AppSubject, AppWindowEvent};
+use void_native::create_mpsc_channel;
+use void_render::{
+    gui::GuiRenderer, scene::ModelRenderer, IRenderer, RenderCmd, RenderSubject, WindowResource,
+};
 use void_ui::VoidUi;
 use winit::{event::WindowEvent, event_loop::EventLoop, window::WindowBuilder};
 
@@ -12,7 +15,7 @@ async fn init<'a>() -> anyhow::Result<()> {
 
     let window_resource = WindowResource::new(window).await;
 
-    let mut gui_renderer = RendererBuilder::new()
+    let mut gui_renderer = GuiRenderer::builder()
         .set_msaa(1)
         .set_context(context.clone())
         .set_resource(Arc::clone(&window_resource))
@@ -21,33 +24,50 @@ async fn init<'a>() -> anyhow::Result<()> {
         .await
         .unwrap();
 
-    event_loop.run(move |event, ewlt| {
-        use winit::event::Event;
+    let sub = RenderSubject::default();
+
+    let (send, recv) = create_mpsc_channel();
+
+    let mut model_renderer = ModelRenderer::builder()
+        .set_resource(Arc::clone(&window_resource))
+        .set_subject(sub)
+        .set_receiver(recv)
+        .build()
+        .await
+        .unwrap();
+
+    tokio::spawn(async move {
+        if let Err(msg) = model_renderer.run().await {
+            log::error!("{}", msg);
+        }
+    });
+
+    let mut app_subject = AppSubject::default();
+    app_subject.attach(AppEvent::Window(AppWindowEvent::Redraw), move || {
+        send.clone().send_blocking(RenderCmd::Render)
+    });
+
+    let mut app = App {
+        subject: app_subject,
+        window_resource,
+    };
+
+    app.run(event_loop, |event| {
+use winit::event::Event;
         match event {
-            Event::WindowEvent { window_id, event } if window_resource.window.id() == window_id => {
-                if !gui_renderer.input(&event) {
-                    match event {
-                        WindowEvent::CloseRequested => ewlt.exit(),
-                        WindowEvent::RedrawRequested => {
-                            log::info!("Redraw Requested");
-                            gui_renderer.render_blocking().unwrap()
-                        }
-                        WindowEvent::Resized(physical_size) => {
-                            let width = physical_size.width;
-                            let height = physical_size.height;
-                            let mut config = window_resource.config.clone();
-                            config.height = height;
-                            config.width =width;
-                            window_resource.surface.configure(&window_resource.device, &config);
-                        },
-                        _ => {}
+            Event::WindowEvent { event, .. }  => {
+                gui_renderer.gather_input(&event);
+                match event {
+                    WindowEvent::RedrawRequested => {
+                        log::info!("Redraw");
+                        gui_renderer.render_blocking().unwrap();
                     }
-                    gui_renderer.gather_input(&event);
+                    _ => {}
                 }
             }
             _ => {}
         }
-    })?;
+    }).unwrap();
 
     Ok(())
 }

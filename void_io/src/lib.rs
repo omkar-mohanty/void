@@ -3,40 +3,30 @@ mod native;
 
 mod gui;
 
-use egui::{Context, RawInput};
 use std::{fmt::Display, sync::Arc};
-use void_core::{ICmdReceiver, ICommand, IEvent, ISubject, Result};
+use void_core::{IEvent, IEventReceiver, ISubject, Result};
 use winit::{event::WindowEvent, window::Window};
 
-pub enum IoCmd {
-    WindowEvent(winit::event::Event<()>),
-}
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+pub enum IoCmd {}
 
-impl Display for IoCmd {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            IoCmd::WindowEvent(_) => f.write_str("WindowEvent"),
-        }
-    }
-}
+impl IEvent for IoCmd {}
 
-impl ICommand for IoCmd {}
-
-#[derive(Clone)]
-pub enum IoEvent {
+#[derive(Clone, Hash, Copy, PartialEq, Eq)]
+pub enum AppEvent {
     Output,
-    Input(RawInput),
-    Resized { height: u32, width: u32 },
+    Input,
+    Resized,
     Redraw,
     Exit,
 }
 
-impl IEvent for IoEvent {}
+impl IEvent for AppEvent {}
 
 pub struct IoEngine<S, R>
 where
-    S: ISubject<E = IoEvent>,
-    R: ICmdReceiver<IoCmd>,
+    S: ISubject<E = AppEvent>,
+    R: IEventReceiver<IoCmd>,
 {
     window: Arc<Window>,
     subject: S,
@@ -45,10 +35,10 @@ where
 
 impl<S, R> IoEngine<S, R>
 where
-    S: ISubject<E = IoEvent>,
-    R: ICmdReceiver<IoCmd>,
+    S: ISubject<E = AppEvent>,
+    R: IEventReceiver<IoCmd>,
 {
-    pub fn new(context: Context, window: Arc<Window>, subject: S, receiver: R) -> Self {
+    pub fn new(window: Arc<Window>, subject: S, receiver: R) -> Self {
         Self {
             subject,
             window,
@@ -66,10 +56,10 @@ where
         match window_event {
             WindowEvent::Resized(physical_size) => {
                 let (height, width) = (physical_size.height, physical_size.width);
-                self.subject.notify(IoEvent::Resized { height, width });
+                self.subject.notify(AppEvent::Resized);
             }
             WindowEvent::RedrawRequested => {
-                self.subject.notify(IoEvent::Redraw);
+                self.subject.notify(AppEvent::Redraw);
             }
             _ => {}
         }
@@ -91,9 +81,7 @@ where
 
     fn handle_cmd(&mut self, cmd: IoCmd) -> Result<()> {
         use IoCmd::*;
-        match cmd {
-            WindowEvent(event) => self.handle_event(event)?,
-        };
+
         Ok(())
     }
 }

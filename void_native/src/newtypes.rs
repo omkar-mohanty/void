@@ -1,6 +1,7 @@
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use void_core::{ICmdReceiver, ICmdSender, ICommand, IEvent, Result};
+use void_core::{IEvent, IEventReceiver, IEventSender, Result};
 
+#[derive(Hash, Clone, Copy, Eq, PartialEq)]
 pub enum NativeEvent {
     Render,
 }
@@ -16,7 +17,7 @@ pub fn create_mpsc_channel<T>() -> (MpscSender<T>, MpscReceiver<T>) {
     (MpscSender(sender), MpscReceiver(receiver))
 }
 
-impl<T: ICommand + 'static + Send> ICmdSender<T> for MpscSender<T> {
+impl<T: IEvent + 'static + Send> IEventSender<T> for MpscSender<T> {
     async fn send(&self, cmd: T) -> Result<()> {
         self.0.send(cmd)?;
         Ok(())
@@ -28,7 +29,7 @@ impl<T: ICommand + 'static + Send> ICmdSender<T> for MpscSender<T> {
     }
 }
 
-impl<T: ICommand + 'static + Send> ICmdReceiver<T> for MpscReceiver<T> {
+impl<T: IEvent + 'static + Send> IEventReceiver<T> for MpscReceiver<T> {
     async fn recv(&mut self) -> Option<T> {
         self.0.recv().await
     }

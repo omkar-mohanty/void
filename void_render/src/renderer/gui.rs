@@ -51,7 +51,7 @@ impl<'a, T: IGui + Default + Send> IBuilder for GuiRendererBuilder<'a, T> {
 }
 
 impl<'a, T: IGui + Default + Send> RendererBuilder<GuiRendererBuilder<'a, T>, GuiRenderer<'a, T>> {
-    pub fn new() -> Self {
+    fn new_gui() -> Self {
         Self {
             builder: GuiRendererBuilder::default(),
         }
@@ -89,7 +89,7 @@ impl<'a, T: IGui + Default + Send> IBuilder
     }
 }
 
-impl<T: IGui> IRenderer for GuiRenderer<'_, T> {
+impl<T: IGui + Send + Default> IRenderer for GuiRenderer<'_, T> {
     async fn render(&mut self) -> std::result::Result<(), wgpu::SurfaceError> {
         self.render_blocking()
     }
@@ -136,7 +136,11 @@ pub struct GuiRenderer<'a, T: IGui> {
     gui: T,
 }
 
-impl<'a, T: IGui> GuiRenderer<'a, T> {
+impl<'a, T: IGui + Send + Default> GuiRenderer<'a, T> {
+    pub fn builder() -> RendererBuilder<GuiRendererBuilder<'a, T>, Self> {
+        RendererBuilder::new_gui()
+    }
+
     pub async fn new(
         msaa_samples: u32,
         egui_context: Context,

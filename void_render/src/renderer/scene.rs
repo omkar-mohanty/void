@@ -1,28 +1,42 @@
 use std::{iter, sync::Arc};
 
 use crate::{
-    model::{INDICES, VERTICES},
+    model::{Vertex, INDICES, VERTICES},
     pipeline, IRenderer, RendererBuilder,
 };
-use void_core::{IBuilder, ICmdReceiver, ISubject, ISystem, Result};
+use void_core::{IBuilder, IEventReceiver, ISubject, ISystem, Result};
 use wgpu::util::DeviceExt;
 
 use super::{RenderCmd, RenderEvent, WindowResource};
 
-struct ModelRendererBuilder<'a, P, R>
+pub struct ModelRendererBuilder<'a, P, R>
 where
     P: ISubject<E = RenderEvent>,
-    R: ICmdReceiver<RenderCmd>,
+    R: IEventReceiver<RenderCmd>,
 {
     resource: Option<Arc<WindowResource<'a>>>,
     subject: Option<P>,
     receiver: Option<R>,
 }
 
+impl<P, R> Default for ModelRendererBuilder<'_, P, R>
+where
+    P: ISubject<E = RenderEvent>,
+    R: IEventReceiver<RenderCmd>,
+{
+    fn default() -> Self {
+        Self {
+            resource: None,
+            subject: None,
+            receiver: None,
+        }
+    }
+}
+
 impl<'a, P, R> IBuilder for ModelRendererBuilder<'a, P, R>
 where
     P: ISubject<E = RenderEvent>,
-    R: ICmdReceiver<RenderCmd>,
+    R: IEventReceiver<RenderCmd>,
 {
     type Output = ModelRenderer<'a, P, R>;
 
@@ -75,7 +89,7 @@ where
             &layout,
             color_format,
             None,
-            &[],
+            &[Vertex::desc()],
             wgpu::PrimitiveTopology::TriangleList,
             shader,
         );
@@ -94,19 +108,47 @@ where
 impl<'a, P, R> IBuilder for RendererBuilder<ModelRendererBuilder<'a, P, R>, ModelRenderer<'a, P, R>>
 where
     P: ISubject<E = RenderEvent>,
-    R: ICmdReceiver<RenderCmd>,
+    R: IEventReceiver<RenderCmd>,
 {
     type Output = ModelRenderer<'a, P, R>;
 
     async fn build(self) -> Result<Self::Output> {
-        self.builder.build().await
+        let res = self.builder.build().await?;
+        Ok(res)
+    }
+}
+
+impl<'a, P, R> RendererBuilder<ModelRendererBuilder<'a, P, R>, ModelRenderer<'a, P, R>>
+where
+    P: ISubject<E = RenderEvent>,
+    R: IEventReceiver<RenderCmd>,
+{
+    fn new_model() -> Self {
+        Self {
+            builder: ModelRendererBuilder::default(),
+        }
+    }
+
+    pub fn set_resource(mut self, resource: Arc<WindowResource<'a>>) -> Self {
+        self.builder.resource = Some(resource);
+        self
+    }
+
+    pub fn set_receiver(mut self, receiver: R) -> Self {
+        self.builder.receiver = Some(receiver);
+        self
+    }
+
+    pub fn set_subject(mut self, subject: P) -> Self {
+        self.builder.subject = Some(subject);
+        self
     }
 }
 
 impl<'a, P, R> ISystem for ModelRenderer<'a, P, R>
 where
     P: ISubject<E = RenderEvent> + Send,
-    R: ICmdReceiver<RenderCmd>,
+    R: IEventReceiver<RenderCmd>,
 {
     type C = RenderCmd;
 
@@ -114,7 +156,7 @@ where
         loop {
             if let Some(cmd) = self.receiver.recv().await {
                 log::info!("Render Engine Received : {cmd}");
-                self.handle_cmd(cmd);
+                self.handle_cmd(cmd)?;
             }
         }
     }
@@ -122,7 +164,7 @@ where
     fn run_blocking(&mut self) -> Result<()> {
         if let Some(cmd) = self.receiver.recv_blockding() {
             log::info!("Render Engine Received : {cmd}");
-            self.handle_cmd(cmd);
+            self.handle_cmd(cmd)?;
         }
         Ok(())
     }
@@ -131,7 +173,7 @@ where
 pub struct ModelRenderer<'a, P, R>
 where
     P: ISubject<E = RenderEvent>,
-    R: ICmdReceiver<RenderCmd>,
+    R: IEventReceiver<RenderCmd>,
 {
     resource: Arc<WindowResource<'a>>,
     subject: P,
@@ -144,8 +186,11 @@ where
 impl<'a, P, R> ModelRenderer<'a, P, R>
 where
     P: ISubject<E = RenderEvent>,
-    R: ICmdReceiver<RenderCmd>,
+    R: IEventReceiver<RenderCmd>,
 {
+    pub fn builder() -> RendererBuilder<ModelRendererBuilder<'a, P, R>, Self> {
+        RendererBuilder::new_model()
+    }
     fn render(&mut self) -> std::result::Result<(), wgpu::SurfaceError> {
         let surface = &self.resource.surface;
         let device = &self.resource.device;
@@ -200,20 +245,24 @@ where
         Ok(())
     }
 
-    fn handle_cmd(&mut self, render_event: RenderCmd) {
+    fn handle_cmd(
+        &mut self,
+        render_event: RenderCmd,
+    ) -> std::result::Result<(), wgpu::SurfaceError> {
         use RenderCmd::*;
         match render_event {
-            Render => self.render(),
+            Render => self.render()?,
         };
         self.subject.notify(RenderEvent::PassComplete);
         log::info!("Render Notified");
+        Ok(())
     }
 }
 
 impl<'a, P, R> IRenderer for ModelRenderer<'a, P, R>
 where
     P: ISubject<E = RenderEvent>,
-    R: ICmdReceiver<RenderCmd>,
+    R: IEventReceiver<RenderCmd>,
 {
     async fn render(&mut self) -> std::result::Result<(), wgpu::SurfaceError> {
         self.render()
