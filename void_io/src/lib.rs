@@ -4,8 +4,8 @@ mod native;
 mod gui;
 
 use std::sync::Arc;
-use void_core::{IEvent, IEventReceiver, ISubject, Result};
-use winit::{event::WindowEvent, window::Window};
+use void_core::{IEvent, IEventReceiver, ISubject};
+use winit::window::Window;
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub enum IoCmd {}

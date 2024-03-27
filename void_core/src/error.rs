@@ -1,5 +1,4 @@
 use core::fmt;
-use std::str::FromStr;
 
 use crossbeam_channel::{RecvError, SendError, TryRecvError, TrySendError};
 use thiserror::Error;
