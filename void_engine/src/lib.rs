@@ -1,7 +1,7 @@
-use std::{borrow::BorrowMut, collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use void_core::{IEvent, IObserver, ISubject, Result};
-use void_render::{RenderEvent, WindowResource};
+use void_render::{WindowResource};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::EventLoop,
