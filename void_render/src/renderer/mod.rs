@@ -2,7 +2,7 @@ use core::fmt;
 use std::{future::Future, sync::Arc};
 
 use egui::ahash::HashMap;
-use void_core::{IBuilder, IEvent, IEventReceiver, IGui, IObserver, ISubject};
+use void_core::{FutError, IBuilder, IEvent, IEventReceiver, IGui, IObserver, ISubject};
 use winit::window::Window;
 
 use self::{gui::GuiRenderer, scene::ModelRenderer};
@@ -12,7 +12,7 @@ pub mod model;
 pub mod pipeline;
 pub mod scene;
 
-#[derive(Clone, Copy, Hash, Eq, PartialEq)]
+#[derive(Clone, Copy, Hash, Eq, PartialEq, Debug)]
 pub enum RenderCmd {
     Render,
 }
@@ -76,8 +76,12 @@ where
             base_array_layer: 0,
             array_layer_count: None,
         }));
-        self.model_renderer.draw(Arc::clone(&view));
-        self.gui_renderer.draw(Arc::clone(&view));
+        std::thread::scope(|_| {
+            self.model_renderer.draw(Arc::clone(&view));
+        });
+        std::thread::scope(|_| {
+            self.gui_renderer.draw(Arc::clone(&view));
+        });
         output.present();
         Ok(())
     }
@@ -94,7 +98,7 @@ impl fmt::Display for RenderCmd {
 
 impl IEvent for RenderCmd {}
 
-#[derive(Hash, Clone, Copy, Eq, PartialEq)]
+#[derive(Hash, Clone, Copy, Eq, PartialEq, Debug)]
 pub enum RenderEvent {
     PassComplete,
 }
@@ -118,7 +122,7 @@ impl ISubject for RenderSubject {
         obs.push(Box::new(observer));
     }
 
-    fn notify(&self, event: Self::E) -> void_core::Result<()> {
+    fn notify(&self, event: Self::E) -> void_core::Result<(), FutError<Self::E>> {
         let obs = self.observers.get(&event).unwrap();
         for o in obs {
             o.update(event)?;

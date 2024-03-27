@@ -6,7 +6,7 @@ use egui_wgpu::ScreenDescriptor;
 use egui_winit::State;
 use std::ops::Deref;
 use std::sync::Arc;
-use void_core::{IBuilder, IGui, Result};
+use void_core::{BuilderError, IBuilder, IGui, Result};
 use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
 
@@ -21,7 +21,7 @@ pub struct GuiRendererBuilder<'a, T: IGui + Default + Send> {
 impl<'a, T: IGui + Default + Send> IBuilder for GuiRendererBuilder<'a, T> {
     type Output = GuiRenderer<'a, T>;
 
-    async fn build(self) -> Result<Self::Output> {
+    async fn build(self) -> Result<Self::Output, BuilderError> {
         let GuiRendererBuilder {
             msaa_samples,
             egui_context,
@@ -83,7 +83,7 @@ impl<'a, T: IGui + Default + Send> IBuilder
 {
     type Output = GuiRenderer<'a, T>;
 
-    async fn build(self) -> Result<Self::Output> {
+    async fn build(self) -> Result<Self::Output, BuilderError> {
         let res = self.builder.build().await?;
         Ok(res)
     }

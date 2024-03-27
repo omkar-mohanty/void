@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 
-members = [ "void_io", "void_native", "void_render",
+members = [ "void_io", "void_render",
     "void_core", "void_engine", "void_ui",
 ]
 

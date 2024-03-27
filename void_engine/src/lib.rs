@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
-use void_core::{IEvent, IObserver, ISubject, Result};
-use void_render::{WindowResource};
+use void_core::{FutError, IEvent, IObserver, ISubject, Result, SystemError};
+use void_render::WindowResource;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::EventLoop,
@@ -17,45 +17,47 @@ impl<'a> App<'a> {
         &mut self,
         event_loop: EventLoop<()>,
         mut func: impl FnMut(&Event<()>),
-    ) -> Result<()> {
-        event_loop.run(|event, ewlt| {
-            func(&event);
+    ) -> Result<(), SystemError<()>> {
+        event_loop
+            .run(|event, ewlt| {
+                func(&event);
 
-            match event {
-                Event::WindowEvent { window_id, event }
-                    if window_id == self.window_resource.window.id() =>
-                {
-                    self.subject
-                        .notify(AppEvent::Window(AppWindowEvent::Update))
-                        .unwrap();
+                match event {
+                    Event::WindowEvent { window_id, event }
+                        if window_id == self.window_resource.window.id() =>
+                    {
+                        self.subject
+                            .notify(AppEvent::Window(AppWindowEvent::Update))
+                            .unwrap();
 
-                    match event {
-                        WindowEvent::CloseRequested => ewlt.exit(),
-                        WindowEvent::Resized(physical_size) => {
-                            let mut config = self.window_resource.config.clone();
-                            config.width = physical_size.width;
-                            config.height = physical_size.height;
-                            self.window_resource
-                                .surface
-                                .configure(&self.window_resource.device, &config);
+                        match event {
+                            WindowEvent::CloseRequested => ewlt.exit(),
+                            WindowEvent::Resized(physical_size) => {
+                                let mut config = self.window_resource.config.clone();
+                                config.width = physical_size.width;
+                                config.height = physical_size.height;
+                                self.window_resource
+                                    .surface
+                                    .configure(&self.window_resource.device, &config);
+                            }
+                            WindowEvent::RedrawRequested => {
+                                self.window_resource.window.request_redraw();
+                                self.subject
+                                    .notify(AppEvent::Window(AppWindowEvent::Redraw))
+                                    .unwrap();
+                            }
+                            _ => {}
                         }
-                        WindowEvent::RedrawRequested => {
-                            self.window_resource.window.request_redraw();
-                            self.subject
-                                .notify(AppEvent::Window(AppWindowEvent::Redraw))
-                                .unwrap();
-                        }
-                        _ => {}
                     }
+                    _ => {}
                 }
-                _ => {}
-            }
-        })?;
+            })
+            .unwrap();
         Ok(())
     }
 }
 
-#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+#[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
 pub enum AppWindowEvent {
     Redraw,
     Resize,
@@ -63,7 +65,7 @@ pub enum AppWindowEvent {
     Update,
 }
 
-#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+#[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
 pub enum AppEvent {
     Window(AppWindowEvent),
     Input,
@@ -86,7 +88,7 @@ impl ISubject for AppSubject {
 
     fn detach(&mut self, _event: Self::E, _observer: impl IObserver<AppEvent>) {}
 
-    fn notify(&self, event: Self::E) -> Result<()> {
+    fn notify(&self, event: Self::E) -> Result<(), FutError<Self::E>> {
         if let Some(observers) = self.observers.get(&event) {
             for obs in observers {
                 obs.update(event)?;

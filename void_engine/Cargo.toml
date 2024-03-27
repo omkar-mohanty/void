@@ -7,7 +7,6 @@ edition = "2021"
 
 [dependencies]
 void_core = {path = "../void_core"}
-void_native = {path = "../void_native"}
 void_render = {path = "../void_render"}
 void_io = {path = "../void_io"}
 void_ui = {path = "../void_ui"}

@@ -4,7 +4,7 @@ use crate::{
     model::{Vertex, INDICES, VERTICES},
     pipeline, Draw, IRenderer, RendererBuilder,
 };
-use void_core::{IBuilder, IEventReceiver, ISubject, ISystem, Result};
+use void_core::{BuilderError, IBuilder, IEventReceiver, ISubject, ISystem, Result, SystemError};
 use wgpu::util::DeviceExt;
 
 use super::{RenderCmd, RenderEvent, WindowResource};
@@ -85,7 +85,7 @@ where
 {
     type Output = ModelRenderer<'a, P, R>;
 
-    async fn build(self) -> Result<Self::Output> {
+    async fn build(self) -> Result<Self::Output, BuilderError> {
         let ModelRendererBuilder {
             resource,
             subject,
@@ -157,7 +157,7 @@ where
 {
     type Output = ModelRenderer<'a, P, R>;
 
-    async fn build(self) -> Result<Self::Output> {
+    async fn build(self) -> Result<Self::Output, BuilderError> {
         let res = self.builder.build().await?;
         Ok(res)
     }
@@ -197,21 +197,14 @@ where
 {
     type C = RenderCmd;
 
-    async fn run(&mut self) -> Result<()> {
+    async fn run(&mut self) -> Result<(), SystemError<RenderCmd>> {
         loop {
-            if let Some(cmd) = self.receiver.recv().await {
-                log::info!("Render Engine Received : {cmd}");
-                self.handle_cmd(cmd)?;
-            }
+            todo!()
         }
     }
 
-    fn run_blocking(&mut self) -> Result<()> {
-        if let Some(cmd) = self.receiver.recv_blockding() {
-            log::info!("Render Engine Received : {cmd}");
-            self.handle_cmd(cmd)?;
-        }
-        Ok(())
+    fn run_blocking(&mut self) -> Result<(), SystemError<RenderCmd>> {
+        todo!();
     }
 }
 
@@ -242,7 +235,7 @@ where
     ) -> std::result::Result<(), wgpu::SurfaceError> {
         use RenderCmd::*;
         match render_event {
-            Render => {},
+            Render => {}
         };
         self.subject.notify(RenderEvent::PassComplete).unwrap();
         log::info!("Render Notified");
