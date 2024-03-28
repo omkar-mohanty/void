@@ -6,6 +6,8 @@ use egui::Context;
 mod error;
 mod newtypes;
 
+pub mod db;
+
 pub use error::*;
 pub use newtypes::*;
 

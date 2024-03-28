@@ -1,0 +1,14 @@
+[package]
+name = "void_gpu"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wgpu = { version =  "0.19.3"}
+bytemuck = { version = "1.14", features = ["derive"] }
+image = "0.25.0"
+tobj = { version = "3.2.1", features = [
+    "async",
+]}
+thiserror = "1.0.58"
+void_core = {path = "../void_core"}

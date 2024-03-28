@@ -229,18 +229,6 @@ where
     pub fn builder() -> RendererBuilder<ModelRendererBuilder<'a, P, R>, Self> {
         RendererBuilder::new_model()
     }
-    fn handle_cmd(
-        &mut self,
-        render_event: RenderCmd,
-    ) -> std::result::Result<(), wgpu::SurfaceError> {
-        use RenderCmd::*;
-        match render_event {
-            Render => {}
-        };
-        self.subject.notify(RenderEvent::PassComplete).unwrap();
-        log::info!("Render Notified");
-        Ok(())
-    }
 }
 
 impl<'a, P, R> IRenderer for ModelRenderer<'a, P, R>
