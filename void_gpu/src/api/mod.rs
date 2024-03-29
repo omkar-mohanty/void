@@ -1,7 +1,7 @@
 mod wgpu_api;
 use uuid::Uuid;
 
-pub use wgpu_api::{Texture, GpuResource, Displayable};
+pub use wgpu_api::{Texture, TextureError ,GpuResource, Displayable};
 
 use crate::texture::TextureDesc;
 

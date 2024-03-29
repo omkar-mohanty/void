@@ -1,11 +1,12 @@
 mod api;
 mod pipeline;
 mod texture;
+mod model;
 
 pub use api::*;
 pub use texture::*;
 
-use crate::model::{DrawModel, Material, Mesh, Model, ModelVertex, Vertex};
+use crate::model::{ModelVertex, Vertex};
 use std::{ops::Range, sync::Arc};
 use wgpu::{
     rwh::{HasDisplayHandle, HasWindowHandle},

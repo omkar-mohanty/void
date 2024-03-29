@@ -2,13 +2,12 @@ use image::{GenericImageView, ImageError};
 use thiserror::Error;
 
 use crate::{
-    texture::{GenericTexture, ITexture},
-    Displayable, GpuResource,
+    texture::{GenericTexture, ITexture}, Displayable, Generic, GpuResource
 };
 
-pub type Texture = GenericTexture<TextureInner>;
+pub type Texture = Generic<TextureInner>;
 
-impl<'a, T: Displayable<'a>> ITexture<'a, T> for GenericTexture<TextureInner> {
+impl<'a, T: Displayable<'a>> ITexture<'a, T> for Generic<TextureInner> {
     type Err = TextureError;
     fn from_bytes(gpu_resource: &GpuResource<'a, T>, bytes: &[u8]) -> Result<Self, TextureError> {
         let device = &gpu_resource.device;

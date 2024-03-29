@@ -14,8 +14,6 @@ pub struct TextureDesc {
     width: u32,
 }
 
-pub struct GenericTexture<T>(pub(crate) T);
-
 pub(crate) trait ITexture<'a, T: Displayable<'a>>: Sized {
     type Err: Error;
     fn from_bytes(gpu_resource: &GpuResource<'a, T>, bytes: &[u8]) -> Result<Self, Self::Err>;
