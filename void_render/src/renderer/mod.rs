@@ -3,7 +3,7 @@ use std::{future::Future, sync::Arc};
 
 use egui::ahash::HashMap;
 use void_core::{FutError, IBuilder, IEvent, IEventReceiver, IGui, IObserver, ISubject};
-use void_gpu::api::GpuResource;
+use void_gpu::GpuResource;
 use winit::window::Window;
 
 use self::{gui::GuiRenderer, scene::ModelRenderer};

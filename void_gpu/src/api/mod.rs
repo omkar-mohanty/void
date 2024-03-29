@@ -1,16 +1,15 @@
 mod wgpu_api;
-use rand::Rng;
 use uuid::Uuid;
-pub use wgpu_api::*;
 
-use crate::texture::{Texture, TextureDesc};
+pub use wgpu_api::{Texture, GpuResource, Displayable};
+
+use crate::texture::TextureDesc;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CommandListIndex(Uuid);
 
 impl CommandListIndex {
-    pub fn new() -> Self {
-        let node_id = rand::thread_rng().gen::<[u8; 6]>();
+    pub fn new(node_id: &[u8; 6]) -> Self {
         Self(Uuid::now_v6(&node_id))
     }
 }
@@ -26,14 +25,12 @@ pub enum BufferType {
 }
 
 pub trait GpuApi {
-    fn create_texture(&self, desc: TextureDesc) -> Texture;
+    type Texture;
+    type Buffer;
+    type Model;
+
+    fn create_texture(&self, desc: TextureDesc) -> Self::Texture;
     fn create_command_list(&mut self, ps: PipelineState) -> CommandListIndex;
-    fn bind_buffer(
-        &mut self,
-        slot: u32,
-        buffer: &Buffer,
-        cmd_index: CommandListIndex,
-        buffer_type: BufferType,
-    );
+    fn bind_buffer(&mut self, slot: u32, buffer: &Self::Buffer, cmd_index: CommandListIndex);
     fn submit_cmd_lists(&mut self);
 }

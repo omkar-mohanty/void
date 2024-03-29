@@ -17,7 +17,7 @@ pub(crate) struct ModelVertex {
 
 pub struct Material {
     pub name: String,
-    pub diffuse_texture: texture::Texture,
+    pub diffuse_texture: texture::TextureId,
     pub bind_group: BindGroup,
 }
 
@@ -32,10 +32,6 @@ pub struct Mesh {
 pub struct Model {
     pub meshes: Vec<Mesh>,
     pub materials: Vec<Material>,
-}
-
-pub struct ModelDB {
-    models: Vec<Model>,
 }
 
 pub trait DrawModel<'a> {
@@ -60,20 +56,4 @@ pub trait DrawModel<'a> {
         instances: Range<u32>,
         camera_bind_group: &'a BindGroup,
     );
-}
-
-#[derive(Clone, Copy, Hash, PartialEq, PartialOrd, Eq, Ord, Debug)]
-pub struct ModelID(usize);
-
-impl IId for ModelID {}
-
-impl IDb for ModelDB {
-    type Id = ModelID;
-    type Data = Model;
-    fn get(
-        &self,
-        _ids: impl Iterator<Item = Self::Id>,
-    ) -> Result<impl Iterator<Item = &Self::Data>, void_core::db::DbError<Self::Id>> {
-        Ok(self.models.iter())
-    }
 }

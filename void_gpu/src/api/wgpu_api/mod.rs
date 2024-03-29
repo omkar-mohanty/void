@@ -1,7 +1,9 @@
 mod api;
 mod pipeline;
+mod texture;
 
 pub use api::*;
+pub use texture::*;
 
 use crate::model::{DrawModel, Material, Mesh, Model, ModelVertex, Vertex};
 use std::{ops::Range, sync::Arc};
@@ -9,11 +11,15 @@ use wgpu::{
     rwh::{HasDisplayHandle, HasWindowHandle},
     SurfaceTarget,
 };
-pub use wgpu::{BindGroup, Buffer};
+
+pub trait Displayable<'a>:
+    Sync + Send + HasDisplayHandle + HasWindowHandle + Into<SurfaceTarget<'a>>
+{
+}
 
 pub struct GpuResource<'a, T>
 where
-    T: Sync + Send + HasDisplayHandle + HasWindowHandle + Into<SurfaceTarget<'a>>,
+    T: Displayable<'a>,
 {
     pub surface: wgpu::Surface<'a>,
     pub device: wgpu::Device,
@@ -25,7 +31,7 @@ where
 
 impl<'a, T> GpuResource<'a, T>
 where
-    T: Sync + Send + HasDisplayHandle + HasWindowHandle + Into<SurfaceTarget<'a>> + 'a,
+    T: Displayable<'a> + 'a,
 {
     pub async fn new(window: Arc<T>, width: u32, height: u32) -> Arc<Self> {
         // The instance is a handle to our GPU

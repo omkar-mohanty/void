@@ -4,7 +4,7 @@ use crate::{
 };
 use std::{iter, sync::Arc};
 use void_core::{BuilderError, IBuilder, IEventReceiver, ISubject, ISystem, Result, SystemError};
-use void_gpu::api::GpuResource;
+use void_gpu::GpuResource;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 

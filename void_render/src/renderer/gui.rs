@@ -7,7 +7,7 @@ use egui_winit::State;
 use std::ops::Deref;
 use std::sync::Arc;
 use void_core::{BuilderError, IBuilder, IGui, Result};
-use void_gpu::api::GpuResource;
+use void_gpu::GpuResource;
 use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
 use winit::window::Window;

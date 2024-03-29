@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use void_core::{FutError, IEvent, IObserver, ISubject, Result, SystemError};
-use void_gpu::api::GpuResource;
+use void_gpu::GpuResource;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::EventLoop,
