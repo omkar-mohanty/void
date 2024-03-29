@@ -1,13 +1,14 @@
-use std::{iter, sync::Arc};
-
 use crate::{
     model::{Vertex, INDICES, VERTICES},
     pipeline, Draw, IRenderer, RendererBuilder,
 };
+use std::{iter, sync::Arc};
 use void_core::{BuilderError, IBuilder, IEventReceiver, ISubject, ISystem, Result, SystemError};
+use void_gpu::api::GpuResource;
 use wgpu::util::DeviceExt;
+use winit::window::Window;
 
-use super::{RenderCmd, RenderEvent, WindowResource};
+use super::{RenderCmd, RenderEvent};
 
 impl<'a, P, R> Draw for ModelRenderer<'a, P, R>
 where
@@ -59,7 +60,7 @@ where
     P: ISubject<E = RenderEvent>,
     R: IEventReceiver<RenderCmd>,
 {
-    resource: Option<Arc<WindowResource<'a>>>,
+    resource: Option<Arc<GpuResource<'a, Window>>>,
     subject: Option<P>,
     receiver: Option<R>,
 }
@@ -174,7 +175,7 @@ where
         }
     }
 
-    pub fn set_resource(mut self, resource: Arc<WindowResource<'a>>) -> Self {
+    pub fn set_resource(mut self, resource: Arc<GpuResource<'a, Window>>) -> Self {
         self.builder.resource = Some(resource);
         self
     }
@@ -213,7 +214,7 @@ where
     P: ISubject<E = RenderEvent>,
     R: IEventReceiver<RenderCmd>,
 {
-    resource: Arc<WindowResource<'a>>,
+    resource: Arc<GpuResource<'a, Window>>,
     subject: P,
     receiver: R,
     pipeline: wgpu::RenderPipeline,

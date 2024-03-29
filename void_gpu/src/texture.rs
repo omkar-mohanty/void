@@ -1,6 +1,11 @@
 use image::{GenericImageView, ImageError};
 use thiserror::Error;
 
+pub struct TextureDesc {
+    height: u32,
+    width: u32,
+}
+
 pub struct Texture {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,

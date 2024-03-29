@@ -10,6 +10,7 @@ void_core = {path = "../void_core"}
 void_render = {path = "../void_render"}
 void_io = {path = "../void_io"}
 void_ui = {path = "../void_ui"}
+void_gpu = {path = "../void_gpu"}
 wgpu = "0.19.3"
 egui = "0.26.2"
 winit = { version = "0.29.7", features = ["rwh_05"] }

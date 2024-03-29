@@ -23,7 +23,7 @@ pub enum IoError {
     #[error("Texture error : {0}")]
     TextureError(#[from] texture::TextureError),
     #[error("Could not load obj file : {0}")]
-    LoadError(#[from] tobj::LoadError)
+    LoadError(#[from] tobj::LoadError),
 }
 
 pub async fn load_string(file_name: &str) -> Result<String, IoError> {
@@ -46,7 +46,7 @@ pub async fn load_texture(
     queue: &wgpu::Queue,
 ) -> Result<texture::Texture, IoError> {
     let data = load_binary(file_name).await?;
-    let res  = texture::Texture::from_bytes(device, queue, &data, file_name)?;
+    let res = texture::Texture::from_bytes(device, queue, &data, file_name)?;
     Ok(res)
 }
 
@@ -134,7 +134,7 @@ pub async fn load_model(
                 vertex_buffer,
                 index_buffer,
                 num_elements: m.mesh.indices.len() as u32,
-                material: m.mesh.material_id.unwrap_or(0),
+                material_id: m.mesh.material_id.unwrap_or(0),
             }
         })
         .collect::<Vec<_>>();

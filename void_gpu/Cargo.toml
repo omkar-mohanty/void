@@ -12,3 +12,10 @@ tobj = { version = "3.2.1", features = [
 ]}
 thiserror = "1.0.58"
 void_core = {path = "../void_core"}
+rand = "0.8.4"
+[dependencies.uuid]
+version = "1.8.0"
+features = [
+    "v6",                # Lets you generate random UUIDs
+    "fast-rng",          # Use a faster (but still sufficiently random) RNG
+]

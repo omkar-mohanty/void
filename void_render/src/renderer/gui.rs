@@ -1,20 +1,22 @@
-use crate::{Draw, IRenderer, RendererBuilder, WindowResource};
+use crate::{Draw, IRenderer, RendererBuilder};
 use egui::epaint::Shadow;
-use egui::{Context, Visuals};
+use egui::{Context as GuiContext, Visuals};
 use egui_wgpu::Renderer;
 use egui_wgpu::ScreenDescriptor;
 use egui_winit::State;
 use std::ops::Deref;
 use std::sync::Arc;
 use void_core::{BuilderError, IBuilder, IGui, Result};
+use void_gpu::api::GpuResource;
 use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
+use winit::window::Window;
 
 #[derive(Default)]
 pub struct GuiRendererBuilder<'a, T: IGui + Default + Send> {
     msaa_samples: Option<u32>,
-    egui_context: Option<Context>,
-    resource: Option<Arc<WindowResource<'a>>>,
+    egui_context: Option<GuiContext>,
+    resource: Option<Arc<GpuResource<'a, Window>>>,
     gui: Option<T>,
 }
 
@@ -62,12 +64,12 @@ impl<'a, T: IGui + Default + Send> RendererBuilder<GuiRendererBuilder<'a, T>, Gu
         self
     }
 
-    pub fn set_context(mut self, context: Context) -> Self {
+    pub fn set_context(mut self, context: GuiContext) -> Self {
         self.builder.egui_context = Some(context);
         self
     }
 
-    pub fn set_resource(mut self, resource: Arc<WindowResource<'a>>) -> Self {
+    pub fn set_resource(mut self, resource: Arc<GpuResource<'a, Window>>) -> Self {
         self.builder.resource = Some(resource);
         self
     }
@@ -128,9 +130,9 @@ impl<T: IGui + Send + Default> IRenderer for GuiRenderer<'_, T> {
 }
 
 pub struct GuiRenderer<'a, T: IGui> {
-    resource: Arc<WindowResource<'a>>,
+    resource: Arc<GpuResource<'a, Window>>,
     state: State,
-    context: Context,
+    context: GuiContext,
     renderer: Renderer,
     config: wgpu::SurfaceConfiguration,
     gui: T,
@@ -143,12 +145,12 @@ impl<'a, T: IGui + Send + Default> GuiRenderer<'a, T> {
 
     pub async fn new(
         msaa_samples: u32,
-        egui_context: Context,
-        resource: Arc<WindowResource<'a>>,
+        egui_context: GuiContext,
+        resource: Arc<GpuResource<'a, Window>>,
         gui: T,
     ) -> Self {
         const BORDER_RADIUS: f32 = 2.0;
-        let WindowResource {
+        let GpuResource {
             device,
             config,
             window,
@@ -188,7 +190,7 @@ impl<'a, T: IGui + Send + Default> GuiRenderer<'a, T> {
         window_surface_view: &wgpu::TextureView,
         screen_descriptor: ScreenDescriptor,
     ) {
-        let WindowResource {
+        let GpuResource {
             device,
             queue,
             window,

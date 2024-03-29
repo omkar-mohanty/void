@@ -1,14 +1,15 @@
 use std::{collections::HashMap, sync::Arc};
 
 use void_core::{FutError, IEvent, IObserver, ISubject, Result, SystemError};
-use void_render::WindowResource;
+use void_gpu::api::GpuResource;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::EventLoop,
+    window::Window,
 };
 
 pub struct App<'a> {
-    pub window_resource: Arc<WindowResource<'a>>,
+    pub window_resource: Arc<GpuResource<'a, Window>>,
     pub subject: AppSubject,
 }
 
