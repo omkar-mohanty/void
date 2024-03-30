@@ -22,15 +22,15 @@ impl<'a, T: Displayable<'a>> ITexture<'a, T> for Texture {
 }
 
 pub struct Texture {
-    pub texture: wgpu::Texture,
-    pub view: wgpu::TextureView,
-    pub sampler: wgpu::Sampler,
+    pub(crate) texture: wgpu::Texture,
+    pub(crate) view: wgpu::TextureView,
+    pub(crate) sampler: wgpu::Sampler,
 }
 
 impl Texture {
-    pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+    pub(crate) const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
-    pub fn create_depth_texture(
+    pub(crate) fn create_depth_texture(
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
         label: &str,
@@ -73,7 +73,7 @@ impl Texture {
     }
 
     #[allow(dead_code)]
-    pub fn from_bytes(
+    pub(crate) fn from_bytes(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         bytes: &[u8],
@@ -83,7 +83,7 @@ impl Texture {
         Self::from_image(device, queue, &img, Some(label))
     }
 
-    pub fn from_image(
+    pub(crate) fn from_image(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         img: &image::DynamicImage,

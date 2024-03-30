@@ -9,9 +9,10 @@ pub struct TextureId(Uuid);
 
 impl IId for TextureId {}
 
-pub struct TextureDesc {
-    height: u32,
-    width: u32,
+pub struct TextureDesc<'a> {
+    pub(crate) height: u32,
+    pub(crate) width: u32,
+    pub(crate) data: &'a [u8],
 }
 
 pub trait ITexture<'a, T: Displayable<'a>>: Sized {

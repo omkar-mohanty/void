@@ -4,13 +4,15 @@ use std::ops::Range;
 
 use uuid::Uuid;
 
+use void_core::IBuilder;
 pub use wgpu_api::DataResource;
 pub use wgpu_api::{Displayable, GpuResource, Texture, TextureError};
 pub use wgpu_api::{Material, Mesh, Model};
 
 use crate::texture::ITexture;
+use crate::TextureDesc;
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct CommandListIndex(Uuid);
 
 impl CommandListIndex {
@@ -32,61 +34,76 @@ pub struct BufferDesc {
     pub stride: usize,
 }
 
-pub trait IBuffer: Sized {
-    fn desc(&self) -> BufferDesc;
-    fn new(desc: BufferDesc) -> Self;
+pub trait IBuffer {
 }
 
 pub trait IGpuCommandBuffer {}
 
 pub trait IPipeline {}
 
-pub trait IContext {
-    type CmdBuffer: IGpuCommandBuffer;
-    fn end(self) -> Self::CmdBuffer;
+pub trait IBindGroup {}
+
+pub trait IContext<'a> {
+    type Pipeline: IPipeline;
+    fn set_pipeline(&mut self, pipeline: &'a Self::Pipeline);
 }
 
-pub trait IGraphicsContext: IContext {
+pub trait IRenderContext<'a>: IContext<'a> {
     type Buffer: IBuffer;
-    type Pipeline: IPipeline;
+    type BindGroup: IBindGroup;
 
-    fn set_vertex_buffer(&mut self, buffer: &Self::Buffer);
-    fn set_index_buffer(&mut self, buffer: &Self::Buffer);
-    fn set_pipeline(&mut self, pipeline: &Self::Pipeline);
+    fn set_vertex_buffer(&mut self,slot:u32 ,buffer: &'a Self::Buffer);
+    fn set_index_buffer(&mut self, buffer: &'a Self::Buffer);
+    fn set_bind_group(&mut self,index: u32,group: &'a Self::BindGroup);
     fn draw(&mut self);
-    fn draw_instanced(&mut self, range: Range<u32>);
-}
-
-pub trait IComputeContext: IContext {
-    type Pipeline: IPipeline;
-
-    fn set_pipeline(&mut self, pipeline: &Self::Pipeline);
-    fn dispatch(&mut self);
-}
-
-pub trait IUploadContext<'a, T>: IContext
-where
-    T: Displayable<'a>,
-{
-    type Buffer: IBuffer;
-    type Texture: ITexture<'a, T>;
-
-    fn upload_buffer(&mut self, buffer: &Self::Buffer);
-    fn upload_texture(&mut self, texture: &Self::Texture);
+    fn draw_instanced(&mut self, instances: Range<u32>);
 }
 
 pub trait IGpu<'a, T: Displayable<'a>> {
     type Texture: ITexture<'a, T>;
-    type Buffer: IBuffer;
-    type Pipeline: IPipeline;
-    type CmdBuffer: IGpuCommandBuffer;
+    type RenderContext: IRenderContext<'a>;
+    type RenderPipeline: IPipeline;
+    type ComputePipeline: IPipeline;
+    type Err: std::error::Error;
 
-    fn create_buffer(&self) -> Self::Buffer;
-    fn create_texture(&self) -> Self::Texture;
-    fn create_pipeline(&self) -> Self::Pipeline;
+    fn create_texture(&self, texture_desc: TextureDesc) -> Result<Self::Texture, Self::Err>;
+    fn create_pipeline(
+        &self,
+        shader_src: &str,
+        pipeline_builder: impl IBuilder<Output = Self::RenderPipeline>,
+    ) -> Result<Self::RenderPipeline, Self::Err>;
 
-    fn submit_context(&self, context: impl IContext) -> impl Future<Output = ()> + Send;
+    fn begin_cmd_list(&mut self) -> CommandListIndex;
+    fn submit_cmd_lists(&mut self) -> impl Future<Output = ()> + Send;
+
+    fn begin_render_ctx(&mut self, idx: CommandListIndex) -> Result<Self::RenderContext, Self::Err>;
+
     fn present(&self);
+}
+
+pub trait DrawModel<'a> {
+    type BindGroup: IBindGroup;
+    fn draw_mesh(
+        &mut self,
+        mesh: &'a Mesh,
+        material: &'a Material,
+        camera_bind_group: &'a Self::BindGroup,
+    );
+    fn draw_mesh_instanced(
+        &mut self,
+        mesh: &'a Mesh,
+        material: &'a Material,
+        instances: Range<u32>,
+        camera_bind_group: &'a Self::BindGroup,
+    );
+
+    fn draw_model(&mut self, model: &'a Model, camera_bind_group: &'a Self::BindGroup);
+    fn draw_model_instanced(
+        &mut self,
+        model: &'a Model,
+        instances: Range<u32>,
+        camera_bind_group: &'a Self::BindGroup,
+    );
 }
 
 #[cfg(test)]
