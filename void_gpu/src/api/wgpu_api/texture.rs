@@ -1,38 +1,33 @@
 use image::{GenericImageView, ImageError};
 use thiserror::Error;
 
-use crate::{
-    texture::{GenericTexture, ITexture}, Displayable, Generic, GpuResource
-};
+use crate::{texture::ITexture, Displayable, GpuResource};
 
-pub type Texture = Generic<TextureInner>;
-
-impl<'a, T: Displayable<'a>> ITexture<'a, T> for Generic<TextureInner> {
+impl<'a, T: Displayable<'a>> ITexture<'a, T> for Texture {
     type Err = TextureError;
     fn from_bytes(gpu_resource: &GpuResource<'a, T>, bytes: &[u8]) -> Result<Self, TextureError> {
         let device = &gpu_resource.device;
         let queue = &gpu_resource.queue;
-        let tex = TextureInner::from_bytes(&device, &queue, bytes, "texture")?;
-        Ok(GenericTexture(tex))
+        let tex = Texture::from_bytes(&device, &queue, bytes, "texture")?;
+        Ok(tex)
     }
 
     fn create_depth_texture(gpu_resource: &GpuResource<'a, T>) -> Result<Self, Self::Err> {
         let device = &gpu_resource.device;
         let config = &gpu_resource.config;
 
-        let tex = TextureInner::create_depth_texture(device, config, "Depth Texture");
-        Ok(GenericTexture(tex))
-
+        let tex = Texture::create_depth_texture(device, config, "Depth Texture");
+        Ok(tex)
     }
 }
 
-pub struct TextureInner {
+pub struct Texture {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
 }
 
-impl TextureInner {
+impl Texture {
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
     pub fn create_depth_texture(

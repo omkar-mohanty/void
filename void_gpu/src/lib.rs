@@ -2,9 +2,26 @@ mod api;
 mod model;
 mod texture;
 
+use std::collections::HashMap;
+
 pub use api::*;
-pub use texture::{TextureId, TextureDesc};
+pub use model::*;
+pub use texture::{TextureDesc, TextureId};
 
-pub(crate) struct Generic<T>(pub(crate) T);
+use void_core::db::{IDb, IId};
 
+pub struct ResourceDB<I: IId, T> {
+    resources: HashMap<I, T>,
+}
 
+impl<I: IId, T> IDb for ResourceDB<I, T> {
+    type Data = T;
+    type Id = I;
+    fn get(
+        &self,
+        ids: impl Iterator<Item = Self::Id>,
+    ) -> Result<impl Iterator<Item = &Self::Data>, void_core::db::DbError<Self::Id>> {
+        let filtered_resource = ids.filter_map(|id| self.resources.get(&id));
+        Ok(filtered_resource)
+    }
+}

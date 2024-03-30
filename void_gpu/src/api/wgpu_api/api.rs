@@ -1,13 +1,12 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
-use crate::{
-    api::{BufferType, CommandListIndex, GpuApi},
-    model::Vertex,
-};
+use crate::{CommandListIndex, Displayable, IGpu, GpuResource};
 
-use super::GpuResource;
-use wgpu::{
-    rwh::{HasDisplayHandle, HasWindowHandle},
-    util::DeviceExt,
-    SurfaceTarget,
-};
+pub struct Gpu<'a, T>
+where
+    T: Displayable<'a>,
+{
+    gpu_resource: Arc<GpuResource<'a, T>>,
+    node_id: &'a [u8; 6],
+    commands: BTreeMap<CommandListIndex, wgpu::CommandEncoder>,
+}

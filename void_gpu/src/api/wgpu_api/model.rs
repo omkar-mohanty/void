@@ -1,35 +1,22 @@
-use uuid::Uuid;
-use void_core::db::IId;
+use crate::{MaterialId, MeshId, TextureId};
 use wgpu::{BindGroup, Buffer};
-use crate::{Generic, TextureId};
 
-pub type Material = Generic<MaterialInner>;
-pub type Mesh = Generic<MeshInner>;
-pub type Model = Generic<ModelInner>;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct MaterialId(Uuid);
-
-impl IId for MaterialId {
-    
+pub struct Material {
+    pub(crate) name: String,
+    pub(crate) id: MaterialId,
+    pub(crate) diffuse_texture: TextureId,
+    pub(crate) bind_group: BindGroup,
 }
 
-pub struct MaterialInner {
-    pub name: String,
-    pub id: MaterialId,
-    pub diffuse_texture: TextureId,
-    pub bind_group: BindGroup,
+pub struct Mesh {
+    pub(crate) name: String,
+    pub(crate) vertex_buffer: Buffer,
+    pub(crate) index_buffer: Buffer,
+    pub(crate) num_elements: u32,
+    pub(crate) material_id: MaterialId,
 }
 
-pub struct MeshInner {
-    pub name: String,
-    pub vertex_buffer: Buffer,
-    pub index_buffer: Buffer,
-    pub num_elements: u32,
-    pub material_id: MaterialId,
-}
-
-pub struct ModelInner {
-    pub meshes: Vec<MeshInner>,
-    pub materials: Vec<MaterialInner>,
+pub struct Model {
+    pub(crate) meshes: Vec<MeshId>,
+    pub(crate) materials: Vec<MaterialId>,
 }
