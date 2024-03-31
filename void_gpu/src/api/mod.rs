@@ -34,8 +34,7 @@ pub struct BufferDesc {
     pub stride: usize,
 }
 
-pub trait IBuffer {
-}
+pub trait IBuffer {}
 
 pub trait IGpuCommandBuffer {}
 
@@ -43,25 +42,43 @@ pub trait IPipeline {}
 
 pub trait IBindGroup {}
 
+pub enum GpuPipeline {
+    Render,
+    Compute,
+}
+
+pub struct RenderPassDesc {}
+
+pub struct ContextDesc {
+    piptline_type: GpuPipeline,
+    rpass_desc: Option<RenderPassDesc>,
+}
+
 pub trait IContext<'a> {
-    type Pipeline: IPipeline;
-    fn set_pipeline(&mut self, pipeline: &'a Self::Pipeline);
+    type Buffer: IBuffer;
+    fn end(self) -> Self::Buffer;
 }
 
 pub trait IRenderContext<'a>: IContext<'a> {
-    type Buffer: IBuffer;
     type BindGroup: IBindGroup;
+    type Pipeline: IPipeline;
 
-    fn set_vertex_buffer(&mut self,slot:u32 ,buffer: &'a Self::Buffer);
+    fn set_vertex_buffer(&mut self, slot: u32, buffer: &'a Self::Buffer);
     fn set_index_buffer(&mut self, buffer: &'a Self::Buffer);
-    fn set_bind_group(&mut self,index: u32,group: &'a Self::BindGroup);
+    fn set_bind_group(&mut self, index: u32, group: &'a Self::BindGroup);
     fn draw(&mut self);
+    fn set_pipeline(&mut self, pipeline: &'a Self::Pipeline);
     fn draw_instanced(&mut self, instances: Range<u32>);
+}
+
+pub trait IUploadContext<'a>: IContext<'a> {
+    fn upload_buffer(buffer: &dyn IBuffer, data: impl bytemuck::Zeroable + bytemuck::Pod);
 }
 
 pub trait IGpu<'a, T: Displayable<'a>> {
     type Texture: ITexture<'a, T>;
     type RenderContext: IRenderContext<'a>;
+    type CmdBuffer: IBuffer;
     type RenderPipeline: IPipeline;
     type ComputePipeline: IPipeline;
     type Err: std::error::Error;
@@ -73,10 +90,11 @@ pub trait IGpu<'a, T: Displayable<'a>> {
         pipeline_builder: impl IBuilder<Output = Self::RenderPipeline>,
     ) -> Result<Self::RenderPipeline, Self::Err>;
 
-    fn begin_cmd_list(&mut self) -> CommandListIndex;
-    fn submit_cmd_lists(&mut self) -> impl Future<Output = ()> + Send;
-
-    fn begin_render_ctx(&mut self, idx: CommandListIndex) -> Result<Self::RenderContext, Self::Err>;
+    fn begin_render_ctx(
+        &mut self,
+        context_desc: ContextDesc,
+    ) -> Result<Self::RenderContext, Self::Err>;
+    fn submit_ctx(&mut self, ctx: impl IContext<'a, Buffer = Self::CmdBuffer>);
 
     fn present(&self);
 }
