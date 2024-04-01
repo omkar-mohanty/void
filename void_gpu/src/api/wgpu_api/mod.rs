@@ -10,6 +10,7 @@ pub use texture::*;
 use crate::model::{MaterialDB, MeshDB, ModelDB, ModelVertex, Vertex};
 use std::ops::Range;
 use std::sync::Arc;
+use thiserror::Error;
 use wgpu::{
     rwh::{HasDisplayHandle, HasWindowHandle},
     SurfaceTarget,
@@ -24,11 +25,11 @@ pub struct GpuResource<'a, T>
 where
     T: Displayable<'a>,
 {
-    pub surface: wgpu::Surface<'a>,
-    pub device: wgpu::Device,
-    pub adapter: wgpu::Adapter,
-    pub queue: wgpu::Queue,
-    pub config: wgpu::SurfaceConfiguration,
+    pub(crate) surface: wgpu::Surface<'a>,
+    pub(crate) device: wgpu::Device,
+    pub(crate) adapter: wgpu::Adapter,
+    pub(crate) queue: wgpu::Queue,
+    pub(crate) config: wgpu::SurfaceConfiguration,
     pub window: Arc<T>,
 }
 
@@ -43,17 +44,11 @@ where
     T: Displayable<'a> + 'a,
 {
     pub async fn new(window: Arc<T>, width: u32, height: u32) -> Arc<Self> {
-        // The instance is a handle to our GPU
-        // BackendBit::PRIMARY => Vulkan + Metal + DX12 + Browser WebGPU
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             ..Default::default()
         });
 
-        // # Safety
-        //
-        // The surface needs to live as long as the window that created it.
-        // State owns the window so this should be safe.
         let surface = instance.create_surface(Arc::clone(&window)).unwrap();
 
         let adapter = instance
@@ -114,6 +109,18 @@ where
             window,
         })
     }
+
+    pub async fn get_current_texture(&self) -> Result<wgpu::SurfaceTexture, ResourceError> {
+        let surface_texture = self.surface.get_current_texture()?;
+
+        Ok(surface_texture)
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum ResourceError {
+    #[error("Surface Error {0}")]
+    SurfaceError(#[from] wgpu::SurfaceError),
 }
 
 impl Vertex<wgpu::VertexBufferLayout<'static>> for ModelVertex {

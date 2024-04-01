@@ -1,6 +1,8 @@
 mod wgpu_api;
+use std::error::Error;
 use std::future::Future;
 use std::ops::Range;
+use std::sync::Arc;
 
 use uuid::Uuid;
 
@@ -51,33 +53,47 @@ pub struct RenderPassDesc {}
 
 pub struct ContextDesc {
     piptline_type: GpuPipeline,
-    rpass_desc: Option<RenderPassDesc>,
 }
 
-pub trait IContext<'a> {
+pub trait IEncoder {
     type Buffer: IBuffer;
-    fn end(self) -> Self::Buffer;
+    type Pipeline: IPipeline;
+    type BindGroup: IBindGroup;
 }
 
-pub trait IRenderContext<'a>: IContext<'a> {
-    type BindGroup: IBindGroup;
-    type Pipeline: IPipeline;
-
+pub trait IRenderEncoder<'a>: IEncoder {
     fn set_vertex_buffer(&mut self, slot: u32, buffer: &'a Self::Buffer);
     fn set_index_buffer(&mut self, buffer: &'a Self::Buffer);
     fn set_bind_group(&mut self, index: u32, group: &'a Self::BindGroup);
-    fn draw(&mut self);
     fn set_pipeline(&mut self, pipeline: &'a Self::Pipeline);
-    fn draw_instanced(&mut self, instances: Range<u32>);
+    fn draw(&mut self,verts: Range<u32> ,instances: Range<u32>);
 }
 
-pub trait IUploadContext<'a>: IContext<'a> {
+pub trait IContext<'a, T: Displayable<'a>> {
+    type CmdBuffer: IBuffer;
+    type Encoder: IEncoder;
+
+    fn new(gpu_resource: Arc<GpuResource<'a, T>>) -> Self;
+    fn encode<'b>(&'b mut self, func: impl FnMut(&mut Self::Encoder))
+    where
+        'b: 'a;
+    fn end(&mut self) -> impl Iterator<Item = Self::CmdBuffer>;
+}
+
+pub trait IRenderContext<'a, T: Displayable<'a>, R: IRenderEncoder<'a>>:
+    IContext<'a, T, Encoder = R>
+{
+    type Gpu: IGpu<'a, T>;
+    type Err: Error;
+    fn render(&mut self, gpu: &'a mut Self::Gpu) -> Result<(), Self::Err>;
+}
+
+pub trait IUploadContext<'a, T: Displayable<'a>>: IContext<'a, T> {
     fn upload_buffer(buffer: &dyn IBuffer, data: impl bytemuck::Zeroable + bytemuck::Pod);
 }
 
 pub trait IGpu<'a, T: Displayable<'a>> {
     type Texture: ITexture<'a, T>;
-    type RenderContext: IRenderContext<'a>;
     type CmdBuffer: IBuffer;
     type RenderPipeline: IPipeline;
     type ComputePipeline: IPipeline;
@@ -90,13 +106,9 @@ pub trait IGpu<'a, T: Displayable<'a>> {
         pipeline_builder: impl IBuilder<Output = Self::RenderPipeline>,
     ) -> Result<Self::RenderPipeline, Self::Err>;
 
-    fn begin_render_ctx(
-        &mut self,
-        context_desc: ContextDesc,
-    ) -> Result<Self::RenderContext, Self::Err>;
-    fn submit_ctx(&mut self, ctx: impl IContext<'a, Buffer = Self::CmdBuffer>);
+    fn submit_cmds(&mut self, cmds: impl Iterator<Item = Self::CmdBuffer>);
 
-    fn present(&self);
+    fn present(&mut self);
 }
 
 pub trait DrawModel<'a> {
