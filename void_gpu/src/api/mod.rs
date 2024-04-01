@@ -1,6 +1,5 @@
 mod wgpu_api;
 use std::error::Error;
-use std::future::Future;
 use std::ops::Range;
 use std::sync::Arc;
 
