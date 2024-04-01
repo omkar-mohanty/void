@@ -3,7 +3,7 @@ use thiserror::Error;
 use void_core::IBuilder;
 
 use crate::{
-    ContextDesc, IBindGroup, IBuffer, IContext, IEncoder, IRenderContext, IRenderEncoder,
+    IBindGroup, IBuffer, IContext, IEncoder, IRenderContext, IRenderEncoder,
     TextureDesc, TextureError,
 };
 

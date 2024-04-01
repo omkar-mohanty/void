@@ -1,0 +1,9 @@
+[package]
+name = "void_window"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+winit = { version = "0.29.7", features = ["rwh_05", "rwh_06"] }
+void_gpu = {path = "../void_gpu"}
+wgpu = "0.19.3"

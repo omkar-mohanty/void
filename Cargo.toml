@@ -2,6 +2,6 @@
 resolver = "2"
 
 members = [ "void_io", "void_render",
-    "void_core", "void_engine", "void_ui", "void_gpu",
+    "void_core", "void_engine", "void_ui", "void_gpu", "void_window",
 ]
 
