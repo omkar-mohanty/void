@@ -10,8 +10,8 @@ pub use wgpu_api::DataResource;
 pub use wgpu_api::{Displayable, GpuResource, Texture, TextureError};
 pub use wgpu_api::{Material, Mesh, Model};
 
-use crate::texture::ITexture;
-use crate::TextureDesc;
+use crate::texture::{ITexture, TextureDB};
+use crate::{MaterialDB, MeshDB, ModelDB, TextureDesc};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct CommandListIndex(Uuid);
@@ -65,7 +65,7 @@ pub trait IRenderEncoder<'a>: IEncoder {
     fn set_index_buffer(&mut self, buffer: &'a Self::Buffer);
     fn set_bind_group(&mut self, index: u32, group: &'a Self::BindGroup);
     fn set_pipeline(&mut self, pipeline: &'a Self::Pipeline);
-    fn draw(&mut self,verts: Range<u32> ,instances: Range<u32>);
+    fn draw(&mut self, verts: Range<u32>, instances: Range<u32>);
 }
 
 pub trait IContext<'a, T: Displayable<'a>> {
@@ -73,18 +73,23 @@ pub trait IContext<'a, T: Displayable<'a>> {
     type Encoder: IEncoder;
 
     fn new(gpu_resource: Arc<GpuResource<'a, T>>) -> Self;
-    fn encode<'b>(&'b mut self, func: impl FnMut(&mut Self::Encoder))
+    fn get_encoder<'b>(&'a self) -> Self::Encoder
     where
-        'b: 'a;
+        'a: 'b;
+    fn submit_encoders(&self, encoders: impl Iterator<Item = Self::Encoder>);
     fn end(&mut self) -> impl Iterator<Item = Self::CmdBuffer>;
 }
 
-pub trait IRenderContext<'a, T: Displayable<'a>, R: IRenderEncoder<'a>>:
-    IContext<'a, T, Encoder = R>
+pub trait IRenderContext<'a, D: Displayable<'a>, R: IRenderEncoder<'a>>:
+    IContext<'a, D, Encoder = R>
 {
-    type Gpu: IGpu<'a, T>;
+    type Gpu: IGpu<'a, D>;
     type Err: Error;
+
     fn render(&mut self, gpu: &'a mut Self::Gpu) -> Result<(), Self::Err>;
+    fn draw<'b>(&'b mut self, model_db: &'b ModelDB, mesh_db: &'b MeshDB, tex_db: &'b MaterialDB)
+    where
+        'b: 'a;
 }
 
 pub trait IUploadContext<'a, T: Displayable<'a>>: IContext<'a, T> {

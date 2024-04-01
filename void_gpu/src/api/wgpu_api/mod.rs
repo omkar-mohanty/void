@@ -6,7 +6,10 @@ mod texture;
 pub use model::*;
 pub use texture::*;
 
-use crate::model::{MaterialDB, MeshDB, ModelDB, ModelVertex, Vertex};
+use crate::{
+    model::{MaterialDB, MeshDB, ModelDB, ModelVertex, Vertex},
+    DrawModel,
+};
 use std::ops::Range;
 use std::sync::Arc;
 use thiserror::Error;
@@ -14,6 +17,8 @@ use wgpu::{
     rwh::{HasDisplayHandle, HasWindowHandle},
     SurfaceTarget,
 };
+
+use self::api::RenderContext;
 
 pub trait Displayable<'a>:
     Sync + Send + HasDisplayHandle + HasWindowHandle + Into<SurfaceTarget<'a>>
@@ -147,23 +152,4 @@ impl Vertex<wgpu::VertexBufferLayout<'static>> for ModelVertex {
             ],
         }
     }
-}
-
-pub trait DrawModel<'a> {
-    fn draw_mesh(&mut self, mesh: &'a Mesh, material: &'a Material);
-    fn draw_mesh_instanced(
-        &mut self,
-        mesh: &'a Mesh,
-        material: &'a Material,
-        instances: Range<u32>,
-    );
-
-    fn draw_model(&mut self, model: &'a Model);
-    fn draw_model_instanced(&mut self, model: &'a Model, instances: Range<u32>);
-    fn draw_model_instanced_with_material(
-        &mut self,
-        model: &'a Model,
-        material: &'a Material,
-        instances: Range<u32>,
-    );
 }

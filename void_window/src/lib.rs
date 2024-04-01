@@ -5,7 +5,6 @@ use wgpu::rwh::{HasDisplayHandle, HasWindowHandle};
 
 pub use winit::*;
 
-
 #[repr(transparent)]
 pub struct Window(winit::window::Window);
 
@@ -31,4 +30,3 @@ impl Deref for Window {
 impl<'a> Displayable<'a> for Window {
     // add code here
 }
-

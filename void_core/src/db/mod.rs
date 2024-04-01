@@ -11,6 +11,8 @@ pub trait IDb {
         &self,
         ids: impl Iterator<Item = Self::Id>,
     ) -> Result<impl Iterator<Item = &Self::Data>, DbError<Self::Id>>;
+    fn get_by_id(&self, id: &Self::Id) -> Option<&Self::Data>;
+    fn iter(&self) -> impl Iterator<Item = (&Self::Id, &Self::Data)>;
 }
 
 #[derive(Error, Debug)]

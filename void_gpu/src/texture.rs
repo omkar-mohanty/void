@@ -1,13 +1,15 @@
 use uuid::Uuid;
 use void_core::db::IId;
 
-use crate::{Displayable, GpuResource};
+use crate::{Displayable, GpuResource, ResourceDB};
 use std::error::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TextureId(Uuid);
 
 impl IId for TextureId {}
+
+pub type TextureDB<'a, T: ITexture<'a, T>> = ResourceDB<TextureId, T>;
 
 pub struct TextureDesc<'a> {
     pub(crate) height: u32,

@@ -1,9 +1,7 @@
-use std::borrow::BorrowMut;
-use std::{cell::RefCell, collections::BTreeMap, ops::Range, sync::Arc};
+use std::{collections::BTreeMap, ops::Range, sync::Arc};
 use thiserror::Error;
 use void_core::db::IDb;
 use void_core::IBuilder;
-use wgpu::util::RenderEncoder;
 
 use crate::{
     IBindGroup, IBuffer, IContext, IEncoder, IRenderContext, IRenderEncoder, TextureDesc,
@@ -47,7 +45,7 @@ impl<'a> IRenderEncoder<'a> for wgpu::RenderBundleEncoder<'a> {
 
 pub struct RenderContext<'a, T: Displayable<'a>> {
     gpu_resource: Arc<GpuResource<'a, T>>,
-    render_bundles: RefCell<Vec<wgpu::RenderBundle>>,
+    render_bundles: Vec<wgpu::RenderBundle>,
     cmd_encoder: wgpu::CommandEncoder,
 }
 
@@ -64,15 +62,12 @@ impl<'a, T: Displayable<'a>> IContext<'a, T> for RenderContext<'a, T> {
                 });
         Self {
             gpu_resource,
-            render_bundles: RefCell::new(Vec::new()),
+            render_bundles: Vec::new(),
             cmd_encoder,
         }
     }
 
-    fn get_encoder<'b>(&'a self) -> Self::Encoder
-    where
-        'a: 'b,
-    {
+    fn get_encoder<'b>(&'a mut self) -> Self::Encoder where 'a: 'b{
         self.gpu_resource.device.create_render_bundle_encoder(
             &wgpu::RenderBundleEncoderDescriptor {
                 label: Some("Render Bundle Encoder"),
@@ -84,15 +79,6 @@ impl<'a, T: Displayable<'a>> IContext<'a, T> for RenderContext<'a, T> {
         )
     }
 
-    fn submit_encoders(&self, encoders: impl Iterator<Item = Self::Encoder>) {
-        let bundles = encoders.map(|encoder| {
-            encoder.finish(&wgpu::RenderBundleDescriptor {
-                label: Some("Bundle"),
-            })
-        });
-        self.render_bundles.borrow_mut().extend(bundles);
-    }
-
     fn end(&mut self) -> impl Iterator<Item = Self::CmdBuffer> {
         let mut cmd_encoder =
             self.gpu_resource
@@ -100,8 +86,9 @@ impl<'a, T: Displayable<'a>> IContext<'a, T> for RenderContext<'a, T> {
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label: Some("Command Encoder"),
                 });
+
         std::mem::swap(&mut cmd_encoder, &mut self.cmd_encoder);
-        std::iter::once(cmd_encoder.finish())
+        vec![cmd_encoder.finish()].into_iter()
     }
 }
 
@@ -122,9 +109,8 @@ impl<'a, T: Displayable<'a>> IRenderContext<'a, T, wgpu::RenderBundleEncoder<'a>
             base_array_layer: 0,
             array_layer_count: None,
         });
-        let bundles = std::mem::take(self.render_bundles.get_mut());
         {
-            let mut rpass = self
+            let _rpass = self
                 .cmd_encoder
                 .begin_render_pass(&wgpu::RenderPassDescriptor {
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -140,10 +126,8 @@ impl<'a, T: Displayable<'a>> IRenderContext<'a, T, wgpu::RenderBundleEncoder<'a>
                     timestamp_writes: None,
                     occlusion_query_set: None,
                 });
-            rpass.execute_bundles(bundles.iter());
         }
         gpu.submit_cmds(self.end());
-        gpu.present();
         surface.present();
         Ok(())
     }
@@ -153,27 +137,15 @@ impl<'a, T: Displayable<'a>> IRenderContext<'a, T, wgpu::RenderBundleEncoder<'a>
         mesh_db: &'b crate::MeshDB,
         material_db: &'b crate::MaterialDB,
     ) where
-        'b: 'a,
+        'a: 'b,
     {
         let models = model_db.iter().map(|dat| dat.1);
-        let iter: Vec<_> = models
-            .map(|model| {
-                let meshes = &model.meshes;
-                let mats = &model.materials;
+        let iter = models.map(|model| {
+            let meshes = &model.meshes;
+            let mats = &model.materials;
 
-                meshes.iter().zip(mats.iter()).map(|(mesh, mat)| {
-                    let mesh = mesh_db.get_by_id(mesh).unwrap();
-
-                    let mut encoder = self.get_encoder();
-                    encoder.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-                    encoder
-                        .set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-                    encoder
-                })
-            })
-            .flatten()
-            .collect();
-        self.submit_encoders(iter.into_iter());
+            meshes.iter().zip(mats.iter())
+        });
     }
 }
 
