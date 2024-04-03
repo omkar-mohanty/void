@@ -1,16 +1,12 @@
 use crate::{Draw, IRenderer, RendererBuilder};
-use egui::epaint::Shadow;
-use egui::{Context as GuiContext, Visuals};
-use egui_wgpu::Renderer;
-use egui_wgpu::ScreenDescriptor;
+use egui::{epaint::Shadow, Context as GuiContext, Visuals};
+use egui_wgpu::{Renderer, ScreenDescriptor};
 use egui_winit::State;
 use std::ops::Deref;
 use std::sync::Arc;
 use void_core::{BuilderError, IBuilder, IGui, Result};
-use void_gpu::GpuResource;
-use winit::dpi::PhysicalSize;
-use winit::event::WindowEvent;
-use winit::window::Window;
+use void_gpu::api::GpuResource;
+use void_window::{dpi::PhysicalSize, event::WindowEvent, Window};
 
 #[derive(Default)]
 pub struct GuiRendererBuilder<'a, T: IGui + Default + Send> {

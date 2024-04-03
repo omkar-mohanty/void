@@ -1,4 +1,7 @@
-use crate::{MaterialId, MeshId, TextureId};
+use crate::{
+    model::{MaterialId, MeshId},
+    texture::TextureId,
+};
 use wgpu::{BindGroup, Buffer};
 
 pub struct Material {

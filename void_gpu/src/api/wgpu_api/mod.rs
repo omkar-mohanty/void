@@ -1,124 +1,18 @@
-mod api;
-mod model;
-mod pipeline;
-mod texture;
+pub(crate) mod api;
+pub(crate) mod model;
+pub(crate) mod pipeline;
+pub(crate) mod texture;
 
-pub use model::*;
-pub use texture::*;
-
-use crate::{
-    model::{MaterialDB, MeshDB, ModelDB, ModelVertex, Vertex},
-    DrawModel,
-};
-use std::ops::Range;
-use std::sync::Arc;
+use crate::model::{ModelVertex, Vertex};
 use thiserror::Error;
 use wgpu::{
     rwh::{HasDisplayHandle, HasWindowHandle},
     SurfaceTarget,
 };
 
-use self::api::RenderContext;
-
 pub trait Displayable<'a>:
     Sync + Send + HasDisplayHandle + HasWindowHandle + Into<SurfaceTarget<'a>>
 {
-}
-
-pub struct GpuResource<'a, T>
-where
-    T: Displayable<'a>,
-{
-    pub(crate) surface: wgpu::Surface<'a>,
-    pub(crate) device: wgpu::Device,
-    pub(crate) adapter: wgpu::Adapter,
-    pub(crate) queue: wgpu::Queue,
-    pub(crate) config: wgpu::SurfaceConfiguration,
-    pub window: Arc<T>,
-}
-
-pub struct DataResource {
-    pub mesh_db: MeshDB,
-    pub model_db: ModelDB,
-    pub material_db: MaterialDB,
-}
-
-impl<'a, T> GpuResource<'a, T>
-where
-    T: Displayable<'a> + 'a,
-{
-    pub async fn new(window: Arc<T>, width: u32, height: u32) -> Arc<Self> {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
-
-        let surface = instance.create_surface(Arc::clone(&window)).unwrap();
-
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
-            .await
-            .unwrap();
-
-        let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: None,
-                    required_features: wgpu::Features::empty(),
-                    // WebGL doesn't support all of wgpu's features, so if
-                    // we're building for the web we'll have to disable some.
-                    required_limits: if cfg!(target_arch = "wasm32") {
-                        wgpu::Limits::downlevel_webgl2_defaults()
-                    } else {
-                        wgpu::Limits::default()
-                    },
-                },
-                None, // Trace path
-            )
-            .await
-            .unwrap();
-
-        let surface_caps = surface.get_capabilities(&adapter);
-        // Assumes an Srgb surface texture. Using a different
-        // one will result all the colors comming out darker. If you want to support non
-        // Srgb surfaces, you'll need to account for that when drawing to the frame.
-        let surface_format = surface_caps
-            .formats
-            .iter()
-            .copied()
-            .find(|f| f.is_srgb())
-            .unwrap_or(surface_caps.formats[0]);
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface_format,
-            width,
-            height,
-            present_mode: surface_caps.present_modes[0],
-            alpha_mode: surface_caps.alpha_modes[0],
-            view_formats: vec![],
-            desired_maximum_frame_latency: 2,
-        };
-        surface.configure(&device, &config);
-
-        Arc::new(Self {
-            adapter,
-            surface,
-            device,
-            queue,
-            config,
-            window,
-        })
-    }
-
-    pub async fn get_current_texture(&self) -> Result<wgpu::SurfaceTexture, ResourceError> {
-        let surface_texture = self.surface.get_current_texture()?;
-
-        Ok(surface_texture)
-    }
 }
 
 #[derive(Error, Debug)]

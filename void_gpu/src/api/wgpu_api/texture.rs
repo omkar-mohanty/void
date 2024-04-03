@@ -1,7 +1,8 @@
 use image::{GenericImageView, ImageError};
 use thiserror::Error;
 
-use crate::{texture::ITexture, Displayable, GpuResource};
+use crate::api::{Displayable, GpuResource};
+use crate::texture::ITexture;
 
 impl<'a, T: Displayable<'a>> ITexture<'a, T> for Texture {
     type Err = TextureError;

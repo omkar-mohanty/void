@@ -1,4 +1,7 @@
-use crate::{Material, Mesh, Model, ResourceDB};
+use crate::{
+    api::wgpu_api::model::{Material, Mesh, Model},
+    ResourceDB,
+};
 use uuid::Uuid;
 use void_core::db::IId;
 

@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use void_gpu::Displayable;
+use void_gpu::api::Displayable;
 use wgpu::rwh::{HasDisplayHandle, HasWindowHandle};
 
 pub use winit::*;

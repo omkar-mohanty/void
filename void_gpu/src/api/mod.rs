@@ -1,17 +1,19 @@
-mod wgpu_api;
-use std::error::Error;
+pub(crate) mod wgpu_api;
 use std::ops::Range;
 use std::sync::Arc;
+use std::{error::Error, future::Future};
 
 use uuid::Uuid;
 
+use crate::{
+    model::{MaterialDB, MeshDB, ModelDB},
+    TextureDesc,
+};
 use void_core::IBuilder;
-pub use wgpu_api::DataResource;
-pub use wgpu_api::{Displayable, GpuResource, Texture, TextureError};
-pub use wgpu_api::{Material, Mesh, Model};
+use wgpu_api::model::{Material, Mesh, Model};
+pub use wgpu_api::{api::*, texture::Texture, texture::TextureError, Displayable};
 
-use crate::texture::{ITexture, TextureDB};
-use crate::{MaterialDB, MeshDB, ModelDB, TextureDesc};
+use crate::texture::ITexture;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct CommandListIndex(Uuid);
@@ -50,10 +52,6 @@ pub enum GpuPipeline {
 
 pub struct RenderPassDesc {}
 
-pub struct ContextDesc {
-    piptline_type: GpuPipeline,
-}
-
 pub trait IEncoder {
     type Buffer: IBuffer;
     type Pipeline: IPipeline;
@@ -68,28 +66,30 @@ pub trait IRenderEncoder<'a>: IEncoder {
     fn draw(&mut self, verts: Range<u32>, instances: Range<u32>);
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum CtxType {
+    Render,
+    Compute,
+}
+
 pub trait IContext<'a, T: Displayable<'a>> {
     type CmdBuffer: IBuffer;
     type Encoder: IEncoder;
 
-    fn new(gpu_resource: Arc<GpuResource<'a, T>>) -> Self;
     fn get_encoder<'b>(&'a self) -> Self::Encoder
     where
         'a: 'b;
-    fn submit_encoders(&self, encoders: impl Iterator<Item = Self::Encoder>);
-    fn end(&mut self) -> impl Iterator<Item = Self::CmdBuffer>;
+    fn ctx_type(&self) -> CtxType;
+    fn end(self) -> impl Iterator<Item = Self::CmdBuffer>;
 }
 
 pub trait IRenderContext<'a, D: Displayable<'a>, R: IRenderEncoder<'a>>:
     IContext<'a, D, Encoder = R>
 {
-    type Gpu: IGpu<'a, D>;
     type Err: Error;
 
-    fn render(&mut self, gpu: &'a mut Self::Gpu) -> Result<(), Self::Err>;
-    fn draw<'b>(&'b mut self, model_db: &'b ModelDB, mesh_db: &'b MeshDB, tex_db: &'b MaterialDB)
-    where
-        'b: 'a;
+    fn render(&self) -> Result<(), Self::Err>;
+    fn set_depth_texture(&mut self, texture: Texture);
 }
 
 pub trait IUploadContext<'a, T: Displayable<'a>>: IContext<'a, T> {
@@ -97,20 +97,15 @@ pub trait IUploadContext<'a, T: Displayable<'a>>: IContext<'a, T> {
 }
 
 pub trait IGpu<'a, T: Displayable<'a>> {
-    type Texture: ITexture<'a, T>;
     type CmdBuffer: IBuffer;
+    type Encoder: IEncoder;
     type RenderPipeline: IPipeline;
     type ComputePipeline: IPipeline;
     type Err: std::error::Error;
 
-    fn create_texture(&self, texture_desc: TextureDesc) -> Result<Self::Texture, Self::Err>;
-    fn create_pipeline(
-        &self,
-        shader_src: &str,
-        pipeline_builder: impl IBuilder<Output = Self::RenderPipeline>,
-    ) -> Result<Self::RenderPipeline, Self::Err>;
+    fn record_recurring_cmd<'b>(&'a mut self, depth_tex: Texture, func: impl FnMut(&mut Self::Encoder));
 
-    fn submit_cmds(&mut self, cmds: impl Iterator<Item = Self::CmdBuffer>);
+    fn submit_ctx(&mut self, render_ctx: impl IContext<'a, T, CmdBuffer = Self::CmdBuffer>);
 
     fn present(&mut self);
 }
@@ -149,7 +144,7 @@ mod tests {
 
     use rand::Rng;
 
-    use crate::CommandListIndex;
+    use crate::api::CommandListIndex;
 
     #[test]
     fn test_cmd_list() {

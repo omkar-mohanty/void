@@ -1,11 +1,9 @@
-mod api;
-mod model;
-mod texture;
+pub mod api;
+pub mod model;
+pub mod texture;
 
 use std::collections::HashMap;
 
-pub use api::*;
-pub use model::*;
 pub use texture::{TextureDesc, TextureId};
 
 use void_core::db::{IDb, IId};
