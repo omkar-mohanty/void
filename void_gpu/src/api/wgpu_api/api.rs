@@ -1,16 +1,13 @@
 use super::texture::{Texture, TextureError};
 use crate::api::{
-    CommandListIndex, CtxType, Displayable, IBindGroup, IBuffer, IContext, IEncoder, IGpu,
+    CommandListIndex, Displayable, IBindGroup, IBuffer, IContext, IEncoder, IGpu,
     IGpuCommandBuffer, IPipeline, IRenderContext, IRenderEncoder,
 };
-use crate::TextureDesc;
 use rand::Rng;
-use std::borrow::BorrowMut;
-use std::future::Future;
-use std::sync::Mutex;
-use std::{cell::RefCell, collections::BTreeMap, ops::Range, sync::Arc};
+use std::{collections::BTreeMap, ops::Range, sync::Arc};
 use thiserror::Error;
-use void_core::IBuilder;
+
+type CtxClosure<'a, T> = Box<dyn FnMut(Arc<T>) -> wgpu::CommandBuffer + 'a>;
 
 impl IBuffer for wgpu::CommandBuffer {}
 impl IPipeline for wgpu::RenderPipeline {}
@@ -46,7 +43,7 @@ impl<'a> IRenderEncoder<'a> for wgpu::RenderBundleEncoder<'a> {
 
 pub struct RenderContext<'a, T: Displayable<'a>> {
     gpu: Arc<Gpu<'a, T>>,
-    render_bundles: RefCell<Vec<wgpu::RenderBundle>>,
+    render_bundles: Vec<wgpu::RenderBundle>,
     depth_texture: Option<Texture>,
 }
 
@@ -54,14 +51,19 @@ impl<'a, T: Displayable<'a>> RenderContext<'a, T> {
     pub(crate) fn new(gpu: Arc<Gpu<'a, T>>) -> Self {
         Self {
             gpu,
-            render_bundles: RefCell::new(Vec::new()),
+            render_bundles: Vec::new(),
             depth_texture: None,
         }
     }
 }
 
-impl<'a, T: Displayable<'a>> IContext<'a, T> for RenderContext<'a, T> {
-    type CmdBuffer = wgpu::CommandBuffer;
+enum CtxOutput<'a, T> {
+    Render(CtxClosure<'a, T>),
+    Compute(CtxClosure<'a, T>),
+}
+
+impl<'a, T: Displayable<'a> + 'a> IContext<'a> for RenderContext<'a, T> {
+    type Output = CtxOutput<'a, wgpu::TextureView>;
     type Encoder = wgpu::RenderBundleEncoder<'a>;
 
     fn get_encoder<'b>(&'a self) -> Self::Encoder
@@ -79,85 +81,43 @@ impl<'a, T: Displayable<'a>> IContext<'a, T> for RenderContext<'a, T> {
             })
     }
 
-    fn ctx_type(&self) -> CtxType {
-        CtxType::Render
+    fn set_encoder(&mut self, encoder: Self::Encoder) {
+        let buncles = encoder.finish(&wgpu::RenderBundleDescriptor {
+            label: Some("Render Bundle Encoder"),
+        });
+        self.render_bundles.push(buncles);
     }
 
-    fn end(mut self) -> impl Iterator<Item = Self::CmdBuffer> {
-        let bundles = self.render_bundles.get_mut().iter();
-        let mut cmd_encoder =
-            self.gpu
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Command Encoder"),
+    fn end(self) -> Self::Output {
+        let bundles = self.render_bundles;
+
+        let gpu = Arc::clone(&self.gpu);
+        let boxxed = Box::new(move |tex_view| {
+            let mut cmd_encoder =
+                gpu.device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("Command Encoder"),
+                    });
+            {
+                let mut rpass = cmd_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Context Render Pass"),
+                    color_attachments: &[],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
                 });
+                rpass.execute_bundles(bundles.iter())
+            }
+            cmd_encoder.finish()
+        });
 
-        let depth_tex = self.depth_texture;
-
-        {
-            let mut rpass = cmd_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-
-            rpass.execute_bundles(bundles)
-        }
-
-        std::iter::once(cmd_encoder.finish())
+        CtxOutput::Render(boxxed)
     }
 }
 
-impl<'a, T: Displayable<'a> + 'a> IRenderContext<'a, T, wgpu::RenderBundleEncoder<'a>>
+impl<'a, T: Displayable<'a> + 'static> IRenderContext<'a, wgpu::RenderBundleEncoder<'a>>
     for RenderContext<'a, T>
 {
-    type Err = RenderError;
-
-    fn render(&self) -> Result<(), Self::Err> {
-        let surface = self.gpu.surface.get_current_texture()?;
-        let texture_view = surface.texture.create_view(&wgpu::TextureViewDescriptor {
-            label: None,
-            format: None,
-            dimension: None,
-            aspect: wgpu::TextureAspect::All,
-            base_mip_level: 0,
-            mip_level_count: None,
-            base_array_layer: 0,
-            array_layer_count: None,
-        });
-        let bundles = self.render_bundles.borrow();
-        let mut cmd_encoder =
-            self.gpu
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Cmd Encoder"),
-                });
-        {
-            let mut rpass = cmd_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &texture_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                label: Some("egui main render pass"),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-            rpass.execute_bundles(bundles.iter());
-        }
-        surface.present();
-        Ok(())
-    }
-
-    fn set_depth_texture(&mut self, texture: Texture) {
-        self.depth_texture = Some(texture)
-    }
 }
 
 pub struct Gpu<'a, T>
@@ -245,43 +205,36 @@ impl<'a, T: Displayable<'a> + 'a> Gpu<'a, T> {
     }
 }
 
-impl<'a, T> IGpu<'a, T> for Gpu<'a, T>
+impl<'a, T> IGpu for Gpu<'a, T>
 where
     T: Displayable<'a> + 'a,
 {
-    type RenderPipeline = wgpu::RenderPipeline;
-    type Encoder = wgpu::RenderBundleEncoder<'a>;
-    type ComputePipeline = wgpu::ComputePipeline;
-    type CmdBuffer = wgpu::CommandBuffer;
+    type CtxOutput = CtxOutput<'a, wgpu::TextureView>;
     type Err = GpuError;
 
-    fn present(&mut self) {
-        let cmds_map = std::mem::take(&mut self.commands);
-        let cmds = cmds_map.into_iter().map(|entry| entry.1);
-        self.queue.submit(cmds);
-    }
-
-    fn submit_ctx(&mut self, render_ctx: impl IContext<'a, T, CmdBuffer = Self::CmdBuffer>) {
-        let cmds = render_ctx
-            .end()
-            .map(|cmd| (CommandListIndex::new(&self.node_id), cmd));
-        self.commands.extend(cmds);
-    }
-
-    fn record_recurring_cmd<'b>(&'a mut self, depth_tex: Texture, mut func: impl FnMut(&mut Self::Encoder)) {
-        let mut encoder =
-            self.device
-                .create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
-                    label: Some("Bundle Encoder"),
-                    color_formats: &[],
-                    depth_stencil: None,
-                    sample_count: 1,
-                    multiview: None,
-                });
-        func(&mut encoder);
-
-        let bundle = encoder.finish(&wgpu::RenderBundleDescriptor{label : Some("Render Bundle Descriptor")});
-        self.render_bundles.push(bundle);
+    fn submit_ctx_output(
+        &mut self,
+        ctxs: impl Iterator<Item = Self::CtxOutput>,
+    ) -> Result<(), Self::Err> {
+        let tex = self.surface.get_current_texture()?;
+        let tex_view = Arc::new(tex.texture.create_view(&wgpu::TextureViewDescriptor {
+            label: None,
+            format: None,
+            dimension: None,
+            aspect: wgpu::TextureAspect::All,
+            base_mip_level: 0,
+            mip_level_count: None,
+            base_array_layer: 0,
+            array_layer_count: None,
+        }));
+    
+        let enco = ctxs.map(|out| {
+            match out {
+                CtxOutput::Render(mut clos) | CtxOutput::Compute(mut clos) => clos(Arc::clone(&tex_view)),
+            }
+        });
+        self.queue.submit(enco);
+        Ok(())
     }
 }
 
@@ -289,6 +242,8 @@ where
 pub enum GpuError {
     #[error("Error creating texture {0}")]
     TextureError(#[from] TextureError),
+    #[error("Error {0}")]
+    SurfaceError(#[from] wgpu::SurfaceError),
 }
 
 #[derive(Error, Debug)]

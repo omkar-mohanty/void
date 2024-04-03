@@ -66,48 +66,31 @@ pub trait IRenderEncoder<'a>: IEncoder {
     fn draw(&mut self, verts: Range<u32>, instances: Range<u32>);
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum CtxType {
-    Render,
-    Compute,
-}
-
-pub trait IContext<'a, T: Displayable<'a>> {
-    type CmdBuffer: IBuffer;
+pub trait IContext<'a> {
+    type Output;
     type Encoder: IEncoder;
 
     fn get_encoder<'b>(&'a self) -> Self::Encoder
     where
         'a: 'b;
-    fn ctx_type(&self) -> CtxType;
-    fn end(self) -> impl Iterator<Item = Self::CmdBuffer>;
+    fn set_encoder(&mut self, encoder: Self::Encoder);
+    fn end(self) -> Self::Output;
 }
 
-pub trait IRenderContext<'a, D: Displayable<'a>, R: IRenderEncoder<'a>>:
-    IContext<'a, D, Encoder = R>
-{
-    type Err: Error;
+pub trait IRenderContext<'a, R: IRenderEncoder<'a>>: IContext<'a, Encoder = R> {}
 
-    fn render(&self) -> Result<(), Self::Err>;
-    fn set_depth_texture(&mut self, texture: Texture);
-}
-
-pub trait IUploadContext<'a, T: Displayable<'a>>: IContext<'a, T> {
+pub trait IUploadContext<'a>: IContext<'a> {
     fn upload_buffer(buffer: &dyn IBuffer, data: impl bytemuck::Zeroable + bytemuck::Pod);
 }
 
-pub trait IGpu<'a, T: Displayable<'a>> {
-    type CmdBuffer: IBuffer;
-    type Encoder: IEncoder;
-    type RenderPipeline: IPipeline;
-    type ComputePipeline: IPipeline;
+pub trait IGpu {
+    type CtxOutput;
     type Err: std::error::Error;
 
-    fn record_recurring_cmd<'b>(&'a mut self, depth_tex: Texture, func: impl FnMut(&mut Self::Encoder));
-
-    fn submit_ctx(&mut self, render_ctx: impl IContext<'a, T, CmdBuffer = Self::CmdBuffer>);
-
-    fn present(&mut self);
+    fn submit_ctx_output(
+        &mut self,
+        render_ctx: impl Iterator<Item = Self::CtxOutput>,
+    ) -> Result<(), Self::Err>;
 }
 
 pub trait DrawModel<'a> {
