@@ -1,7 +1,5 @@
-use crate::{
-    api::wgpu_api::model::{Material, Mesh, Model},
-    ResourceDB,
-};
+pub use crate::api::wgpu_api::model::{Material, Mesh, Model};
+use crate::ResourceDB;
 use uuid::Uuid;
 use void_core::db::IId;
 
@@ -15,13 +13,11 @@ pub struct MeshId(Uuid);
 
 impl IId for MeshId {}
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct ModelId(Uuid);
 
 impl IId for ModelId {}
 
-pub type MeshDB = ResourceDB<MeshId, Mesh>;
-pub type MaterialDB = ResourceDB<MaterialId, Material>;
 pub type ModelDB = ResourceDB<ModelId, Model>;
 
 pub(crate) trait Vertex<T> {

@@ -1,57 +1,50 @@
 use std::{collections::HashMap, sync::Arc};
 
-use void_core::{FutError, IEvent, IObserver, ISubject, Result, SystemError};
-use void_gpu::GpuResource;
-use winit::{
+use void_core::{
+    db::IDb, threadpool::rayon::ThreadPool, FutError, IEvent, IObserver, ISubject, Result,
+    SystemError,
+};
+use void_gpu::{api::Gpu, model::ModelDB};
+use void_render::RendererEngine;
+use void_window::{
     event::{Event, WindowEvent},
     event_loop::EventLoop,
-    window::Window,
+    Window,
 };
 
 pub struct App<'a> {
-    pub window_resource: Arc<GpuResource<'a, Window>>,
-    pub subject: AppSubject,
+    pub gpu: Arc<Gpu<'a, Window>>,
+    pub render_engine: RendererEngine<'a, Window>,
+    pub thread_pool: Arc<ThreadPool>,
+    pub model_db: Arc<ModelDB>,
 }
 
 impl<'a> App<'a> {
-    pub fn run(
-        &mut self,
-        event_loop: EventLoop<()>,
-        mut func: impl FnMut(&Event<()>),
-    ) -> Result<(), SystemError<()>> {
+    pub fn run(self, event_loop: EventLoop<()>) -> Result<(), SystemError<()>>
+where {
         event_loop
-            .run(|event, ewlt| {
-                func(&event);
-
-                match event {
-                    Event::WindowEvent { window_id, event }
-                        if window_id == self.window_resource.window.id() =>
-                    {
-                        self.subject
-                            .notify(AppEvent::Window(AppWindowEvent::Update))
-                            .unwrap();
-
-                        match event {
-                            WindowEvent::CloseRequested => ewlt.exit(),
-                            WindowEvent::Resized(physical_size) => {
-                                let mut config = self.window_resource.config.clone();
-                                config.width = physical_size.width;
-                                config.height = physical_size.height;
-                                self.window_resource
-                                    .surface
-                                    .configure(&self.window_resource.device, &config);
-                            }
-                            WindowEvent::RedrawRequested => {
-                                self.window_resource.window.request_redraw();
-                                self.subject
-                                    .notify(AppEvent::Window(AppWindowEvent::Redraw))
-                                    .unwrap();
-                            }
-                            _ => {}
+            .run(|event, ewlt| match event {
+                Event::WindowEvent { window_id, event } if window_id == self.gpu.window.id() => {
+                    match event {
+                        WindowEvent::CloseRequested => ewlt.exit(),
+                        WindowEvent::Resized(physical_size) => {
+                            let mut config = self.gpu.config.clone();
+                            config.width = physical_size.width;
+                            config.height = physical_size.height;
+                            self.gpu.surface.configure(&self.gpu.device, &config);
                         }
+                        WindowEvent::RedrawRequested => {
+                            for model in self.model_db.values() {
+                                self.thread_pool.install(|| {
+                                    self.render_engine.render_model(model);
+                                });
+                            }
+                            self.gpu.window.request_redraw();
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
+                _ => {}
             })
             .unwrap();
         Ok(())
@@ -70,31 +63,4 @@ pub enum AppWindowEvent {
 pub enum AppEvent {
     Window(AppWindowEvent),
     Input,
-}
-
-impl IEvent for AppEvent {}
-
-#[derive(Default)]
-pub struct AppSubject {
-    observers: HashMap<AppEvent, Vec<Box<dyn IObserver<AppEvent>>>>,
-}
-
-impl ISubject for AppSubject {
-    type E = AppEvent;
-
-    fn attach(&mut self, event: Self::E, observer: impl IObserver<AppEvent> + 'static) {
-        let entry = self.observers.entry(event).or_default();
-        entry.push(Box::new(observer));
-    }
-
-    fn detach(&mut self, _event: Self::E, _observer: impl IObserver<AppEvent>) {}
-
-    fn notify(&self, event: Self::E) -> Result<(), FutError<Self::E>> {
-        if let Some(observers) = self.observers.get(&event) {
-            for obs in observers {
-                obs.update(event)?;
-            }
-        }
-        Ok(())
-    }
 }

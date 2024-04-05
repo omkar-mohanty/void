@@ -6,7 +6,7 @@ use wgpu::rwh::{HasDisplayHandle, HasWindowHandle};
 pub use winit::*;
 
 #[repr(transparent)]
-pub struct Window(winit::window::Window);
+pub struct Window(pub winit::window::Window);
 
 impl HasWindowHandle for Window {
     fn window_handle(&self) -> Result<wgpu::rwh::WindowHandle<'_>, wgpu::rwh::HandleError> {

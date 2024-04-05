@@ -1,15 +1,35 @@
 #![feature(fn_traits)]
 
-use std::{future::Future, hash::Hash};
+use std::{
+    future::Future,
+    hash::Hash,
+    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
+};
 
 use egui::Context;
 mod error;
 mod newtypes;
 
 pub mod db;
-
+pub mod threadpool;
 pub use error::*;
 pub use newtypes::*;
+
+pub struct Locked<T>(Arc<RwLock<T>>);
+
+impl<T> Locked<T> {
+    pub fn new(val: T) -> Self {
+        Self(Arc::new(RwLock::new(val)))
+    }
+
+    pub fn read(&self) -> RwLockReadGuard<T> {
+        self.0.read().unwrap()
+    }
+
+    pub fn write(&self) -> RwLockWriteGuard<T> {
+        self.0.write().unwrap()
+    }
+}
 
 pub type Result<T, E> = std::result::Result<T, E>;
 

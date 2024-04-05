@@ -7,12 +7,10 @@ pub trait IDb {
     type Id: IId;
     type Data;
 
-    fn get(
-        &self,
-        ids: impl Iterator<Item = Self::Id>,
-    ) -> Result<impl Iterator<Item = &Self::Data>, DbError<Self::Id>>;
     fn get_by_id(&self, id: &Self::Id) -> Option<&Self::Data>;
     fn iter(&self) -> impl Iterator<Item = (&Self::Id, &Self::Data)>;
+    fn keys(&self) -> impl Iterator<Item = &Self::Id>;
+    fn values(&self) -> impl Iterator<Item = &Self::Data>;
 }
 
 #[derive(Error, Debug)]

@@ -10,7 +10,7 @@ thiserror = "1.0.58"
 egui = "0.26.2"
 crossbeam-channel = "0.5"
 crossbeam-queue = "0.3"
-
+rayon = "1.10.0"
 # standard crate data is left out
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

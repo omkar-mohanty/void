@@ -7,12 +7,6 @@ edition = "2021"
 
 [dependencies]
 void_window = {path = "../void_window"}
-egui-winit = "0.26.2"
-egui-wgpu = "0.26.2"
-wgpu = "0.19.3"
-egui = "0.26.2"
 log = "0.4.21"
-bytemuck = { version = "1.14", features = ["derive"] }
 void_core = { path = "../void_core" }
 void_gpu = {path = "../void_gpu"}
-cfg-if = "1.0.0"

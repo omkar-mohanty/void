@@ -1,19 +1,19 @@
 use image::{GenericImageView, ImageError};
 use thiserror::Error;
 
-use crate::api::{Displayable, GpuResource};
+use crate::api::{Displayable, Gpu};
 use crate::texture::ITexture;
 
 impl<'a, T: Displayable<'a>> ITexture<'a, T> for Texture {
     type Err = TextureError;
-    fn from_bytes(gpu_resource: &GpuResource<'a, T>, bytes: &[u8]) -> Result<Self, TextureError> {
+    fn from_bytes(gpu_resource: &Gpu<'a, T>, bytes: &[u8]) -> Result<Self, TextureError> {
         let device = &gpu_resource.device;
         let queue = &gpu_resource.queue;
         let tex = Texture::from_bytes(&device, &queue, bytes, "texture")?;
         Ok(tex)
     }
 
-    fn create_depth_texture(gpu_resource: &GpuResource<'a, T>) -> Result<Self, Self::Err> {
+    fn create_depth_texture(gpu_resource: &Gpu<'a, T>) -> Result<Self, Self::Err> {
         let device = &gpu_resource.device;
         let config = &gpu_resource.config;
 
