@@ -63,6 +63,7 @@ pub trait IGpu {
 
     fn submit_ctx_output(&self, render_ctx: impl Iterator<Item = Self::CtxOutput>);
     fn insert_pipeline(&self, pipeline: GpuPipeline) -> PipelineId;
+    fn window_update(&self, width: u32, height: u32);
     fn present(&self) -> Result<(), Self::Err>;
 }
 

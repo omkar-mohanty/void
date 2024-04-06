@@ -11,7 +11,7 @@ use std::{
 };
 use thiserror::Error;
 use uuid::Uuid;
-use void_core::threadpool::rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use void_core::rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 impl IBuffer for wgpu::CommandBuffer {}
 impl IPipeline for wgpu::RenderPipeline {}
@@ -196,7 +196,7 @@ impl<'a, T: Displayable<'a>> IContext for StaticRenderCtx<'a, T> {
                 .device
                 .create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
                     label: Some("Render Bundle Encoder"),
-                    color_formats: &[Some(self.gpu.config.format)],
+                    color_formats: &[Some(self.gpu.config.read().unwrap().format)],
                     depth_stencil: None,
                     sample_count: 1,
                     multiview: None,
@@ -268,11 +268,11 @@ pub struct Gpu<'a, T>
 where
     T: Displayable<'a>,
 {
-    pub surface: wgpu::Surface<'a>,
-    pub device: wgpu::Device,
-    pub adapter: wgpu::Adapter,
-    pub queue: wgpu::Queue,
-    pub config: wgpu::SurfaceConfiguration,
+    pub(crate) surface: wgpu::Surface<'a>,
+    pub(crate) device: wgpu::Device,
+    pub(crate) adapter: wgpu::Adapter,
+    pub(crate) queue: wgpu::Queue,
+    pub(crate) config: RwLock<wgpu::SurfaceConfiguration>,
     pub window: Arc<T>,
     node_id: [u8; 6],
     static_cmds: RwLock<BTreeMap<CommandListIndex, StaticRenderObject>>,
@@ -342,7 +342,7 @@ impl<'a, T: Displayable<'a> + 'a> Gpu<'a, T> {
             surface,
             device,
             queue,
-            config,
+            config: RwLock::new(config),
             window,
             node_id: rand::thread_rng().gen::<[u8; 6]>(),
             static_cmds: RwLock::new(BTreeMap::new()),
@@ -359,6 +359,13 @@ where
 {
     type CtxOutput = CtxOutput;
     type Err = GpuError;
+
+    fn window_update(&self, width: u32, height: u32) {
+        let mut config_write = self.config.write().unwrap();
+        config_write.width = width;
+        config_write.height = height;
+        self.surface.configure(&self.device, &config_write);
+    }
 
     fn insert_pipeline(&self, pipeline: crate::api::GpuPipeline) -> PipelineId {
         let id = PipelineId(Uuid::new_v4());
@@ -402,9 +409,7 @@ where
                     }
                 }
             }
-            CtxOutput::Upload => {
-                todo!()
-            }
+            CtxOutput::Upload => {}
         });
     }
 
@@ -414,7 +419,7 @@ where
             .texture
             .create_view(&wgpu::TextureViewDescriptor {
                 label: Some("Surface Texture View"),
-                format: Some(self.config.format),
+                format: Some(self.config.read().unwrap().format),
                 ..Default::default()
             });
 

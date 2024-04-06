@@ -37,7 +37,7 @@ impl<'a, T: Displayable<'a>> IBuilder for PipelineBuilder<'a, T> {
     async fn build(self) -> void_core::Result<Self::Output, void_core::BuilderError> {
         let shader_src = self.shader_src.unwrap_or(include_str!("shader.wgsl"));
         let device = &self.gpu.device;
-        let color_format = self.gpu.config.format;
+        let color_format = self.gpu.config.read().unwrap().format;
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Model Renderer Pipeline"),
             bind_group_layouts: &[],

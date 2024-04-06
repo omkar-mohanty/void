@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use void_core::threadpool::rayon::ThreadPoolBuilder;
+use void_core::rayon::ThreadPoolBuilder;
 use void_engine::App;
 use void_gpu::{api::Gpu, model::ModelDB};
 use void_render::RendererEngine;

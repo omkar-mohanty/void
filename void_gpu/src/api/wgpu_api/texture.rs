@@ -15,7 +15,7 @@ impl<'a, T: Displayable<'a>> ITexture<'a, T> for Texture {
 
     fn create_depth_texture(gpu_resource: &Gpu<'a, T>) -> Result<Self, Self::Err> {
         let device = &gpu_resource.device;
-        let config = &gpu_resource.config;
+        let config = &gpu_resource.config.read().unwrap();
 
         let tex = Texture::create_depth_texture(device, config, "Depth Texture");
         Ok(tex)

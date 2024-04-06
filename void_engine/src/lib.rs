@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
-use void_core::{threadpool::rayon::ThreadPool, Result, SystemError};
-use void_gpu::{api::Gpu, model::ModelDB};
+use void_core::{rayon::ThreadPool, Result, SystemError};
+use void_gpu::{
+    api::{Gpu, IGpu},
+    model::ModelDB,
+};
 use void_render::RendererEngine;
 use void_window::{
     event::{Event, WindowEvent},
@@ -25,10 +28,8 @@ where {
                     match event {
                         WindowEvent::CloseRequested => ewlt.exit(),
                         WindowEvent::Resized(physical_size) => {
-                            let mut config = self.gpu.config.clone();
-                            config.width = physical_size.width;
-                            config.height = physical_size.height;
-                            self.gpu.surface.configure(&self.gpu.device, &config);
+                            self.gpu
+                                .window_update(physical_size.width, physical_size.height);
                         }
                         WindowEvent::RedrawRequested => {
                             self.render_engine.render();
@@ -42,18 +43,4 @@ where {
             .unwrap();
         Ok(())
     }
-}
-
-#[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
-pub enum AppWindowEvent {
-    Redraw,
-    Resize,
-    Close,
-    Update,
-}
-
-#[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
-pub enum AppEvent {
-    Window(AppWindowEvent),
-    Input,
 }
