@@ -1,12 +1,17 @@
 use super::texture::{Texture, TextureError};
 use crate::api::{
-    Displayable, DrawModel, IBindGroup, IBuffer, IContext, IGpu, IGpuCommandBuffer, IPipeline,
+    CommandListIndex, Displayable, DrawModel, GpuPipeline, IBindGroup, IBuffer, IContext, IGpu,
+    IGpuCommandBuffer, IPipeline, PipelineId,
 };
+use rand::Rng;
 use std::{
+    collections::{BTreeMap, HashMap},
     ops::Range,
     sync::{Arc, RwLock},
 };
 use thiserror::Error;
+use uuid::Uuid;
+use void_core::threadpool::rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 impl IBuffer for wgpu::CommandBuffer {}
 impl IPipeline for wgpu::RenderPipeline {}
@@ -39,23 +44,25 @@ pub enum CtxInterm<'a> {
     Upload {},
 }
 
-pub struct RenderContext<'a, T: Displayable<'a>> {
+pub struct StaticRenderCtx<'a, T: Displayable<'a>> {
     render_bundles: RwLock<Vec<wgpu::RenderBundle>>,
     depth_texture: Option<Texture>,
     gpu: Arc<Gpu<'a, T>>,
+    pipeline_id: Option<PipelineId>,
 }
 
-impl<'a, T: Displayable<'a>> RenderContext<'a, T> {
+impl<'a, T: Displayable<'a>> StaticRenderCtx<'a, T> {
     pub fn new(gpu: Arc<Gpu<'a, T>>) -> Self {
         Self {
             render_bundles: RwLock::new(Vec::new()),
             depth_texture: None,
             gpu,
+            pipeline_id: None,
         }
     }
 }
 
-impl<'a, 'b, T: Displayable<'a>> DrawModel<'b, 'a> for RenderContext<'a, T> {
+impl<'a, 'b, T: Displayable<'a>> DrawModel<'b, 'a> for StaticRenderCtx<'a, T> {
     type BindGroup = wgpu::BindGroup;
 
     fn draw_mesh(
@@ -159,17 +166,29 @@ impl<'a, 'b, T: Displayable<'a>> DrawModel<'b, 'a> for RenderContext<'a, T> {
     }
 }
 
-pub enum CtxOutput {
-    Upload,
-    Render {
-        bundles: Vec<wgpu::RenderBundle>,
-        depth_tex: Option<Texture>,
-    },
+pub enum RenderType {
+    Bundled(Vec<wgpu::RenderBundle>),
+    Single(wgpu::CommandBuffer),
 }
 
-impl<'a, T: Displayable<'a>> IContext for RenderContext<'a, T> {
+pub struct RenderCmd {
+    render_type: RenderType,
+    pipeline_id: Option<PipelineId>,
+    depth_tex: Option<Texture>,
+}
+
+pub enum CtxOutput {
+    Upload,
+    Render(RenderCmd),
+}
+
+impl<'a, T: Displayable<'a>> IContext for StaticRenderCtx<'a, T> {
     type Output = CtxOutput;
     type Encoder = CtxInterm<'a>;
+
+    fn set_pileine(&mut self, id: PipelineId) {
+        self.pipeline_id = Some(id);
+    }
 
     fn set_stage(&self, enc: Self::Encoder) {
         let mut bundle_encoder =
@@ -224,11 +243,25 @@ impl<'a, T: Displayable<'a>> IContext for RenderContext<'a, T> {
 
     fn end(mut self) -> Self::Output {
         let bundles = std::mem::take(self.render_bundles.get_mut().unwrap());
-        CtxOutput::Render {
-            bundles,
+        let pipeline_id = self.pipeline_id;
+        CtxOutput::Render(RenderCmd {
+            render_type: RenderType::Bundled(bundles),
             depth_tex: self.depth_texture,
-        }
+            pipeline_id,
+        })
     }
+}
+
+pub struct StaticRenderObject {
+    depth_tex: Option<Texture>,
+    bundle: Vec<wgpu::RenderBundle>,
+    pipeline_id: Option<PipelineId>,
+}
+
+pub struct DynamicRenderObject {
+    depth_tex: Option<Texture>,
+    cmd: wgpu::CommandBuffer,
+    pipeline_id: Option<PipelineId>,
 }
 
 pub struct Gpu<'a, T>
@@ -241,7 +274,11 @@ where
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
     pub window: Arc<T>,
-    render_bundles: RwLock<Vec<wgpu::RenderBundle>>,
+    node_id: [u8; 6],
+    static_cmds: RwLock<BTreeMap<CommandListIndex, StaticRenderObject>>,
+    dynamic_cmds: RwLock<BTreeMap<CommandListIndex, DynamicRenderObject>>,
+    render_pileines: RwLock<HashMap<PipelineId, wgpu::RenderPipeline>>,
+    compute_pipelines: RwLock<HashMap<PipelineId, wgpu::ComputePipeline>>,
 }
 
 impl<'a, T: Displayable<'a> + 'a> Gpu<'a, T> {
@@ -307,7 +344,11 @@ impl<'a, T: Displayable<'a> + 'a> Gpu<'a, T> {
             queue,
             config,
             window,
-            render_bundles: RwLock::new(Vec::new()),
+            node_id: rand::thread_rng().gen::<[u8; 6]>(),
+            static_cmds: RwLock::new(BTreeMap::new()),
+            dynamic_cmds: RwLock::new(BTreeMap::new()),
+            render_pileines: RwLock::new(HashMap::new()),
+            compute_pipelines: RwLock::new(HashMap::new()),
         })
     }
 }
@@ -319,40 +360,130 @@ where
     type CtxOutput = CtxOutput;
     type Err = GpuError;
 
+    fn insert_pipeline(&self, pipeline: crate::api::GpuPipeline) -> PipelineId {
+        let id = PipelineId(Uuid::new_v4());
+        match pipeline {
+            GpuPipeline::Render(pipeline) => {
+                self.render_pileines.write().unwrap().insert(id, pipeline);
+            }
+            GpuPipeline::Compute(pipeline) => {
+                self.compute_pipelines.write().unwrap().insert(id, pipeline);
+            }
+        }
+        id
+    }
+
     fn submit_ctx_output(&self, ctxs: impl Iterator<Item = Self::CtxOutput>) {
-        let _ = ctxs
-            .map(|out| match out {
-                CtxOutput::Render { bundles, depth_tex } => {
-                    self.render_bundles
-                        .write()
-                        .unwrap()
-                        .extend(bundles.into_iter());
+        let _ = ctxs.map(|out| match out {
+            CtxOutput::Render(render_cmd) => {
+                let depth_tex = render_cmd.depth_tex;
+                let render_type = render_cmd.render_type;
+                let pipeline_id = render_cmd.pipeline_id;
+                match render_type {
+                    RenderType::Single(cmd) => {
+                        self.dynamic_cmds.write().unwrap().insert(
+                            CommandListIndex::new(&self.node_id),
+                            DynamicRenderObject {
+                                depth_tex,
+                                cmd,
+                                pipeline_id,
+                            },
+                        );
+                    }
+                    RenderType::Bundled(bundle) => {
+                        self.static_cmds.write().unwrap().insert(
+                            CommandListIndex::new(&self.node_id),
+                            StaticRenderObject {
+                                depth_tex,
+                                bundle,
+                                pipeline_id,
+                            },
+                        );
+                    }
                 }
-                CtxOutput::Upload => {
-                    todo!()
-                }
-            })
-            .collect::<Vec<_>>();
+            }
+            CtxOutput::Upload => {
+                todo!()
+            }
+        });
+    }
+
+    fn present(&self) -> Result<(), Self::Err> {
+        let surface_tex = self.surface.get_current_texture()?;
+        let view = surface_tex
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor {
+                label: Some("Surface Texture View"),
+                format: Some(self.config.format),
+                ..Default::default()
+            });
 
         let mut cmd_encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Cmd Encoder"),
             });
-        let bundles = self.render_bundles.read().unwrap();
 
         {
-            let mut rpass = cmd_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Rpass"),
-                color_attachments: &[],
+            let _rpass = cmd_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Static Object Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-            rpass.execute_bundles(bundles.iter());
         }
 
-        self.queue.submit(std::iter::once(cmd_encoder.finish()));
+        let clear_cmd = std::iter::once(cmd_encoder.finish());
+
+        let cmds: Vec<_> = self
+            .static_cmds
+            .read()
+            .unwrap()
+            .par_iter()
+            .map(|(_, obj)| {
+                let bundles = &obj.bundle;
+                let pipeline_id = obj.pipeline_id.unwrap();
+                let pipelines_read = self.render_pileines.read().unwrap();
+                let pipeline = pipelines_read.get(&pipeline_id).unwrap();
+                let mut cmd_encoder =
+                    self.device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("Cmd Encoder"),
+                        });
+
+                {
+                    let mut rpass = cmd_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("Static Object Render Pass"),
+                        color_attachments: &[],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                    });
+                    rpass.set_pipeline(pipeline);
+                    rpass.execute_bundles(bundles.iter());
+                }
+                cmd_encoder.finish()
+            })
+            .collect();
+
+        self.queue.submit(clear_cmd.chain(cmds));
+
+        surface_tex.present();
+
+        Ok(())
     }
 }
 

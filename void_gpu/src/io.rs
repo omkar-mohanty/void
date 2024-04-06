@@ -1,6 +1,6 @@
 use crate::{
     api::{Texture, TextureError},
-    model, texture,
+    model,
 };
 use std::io::{BufReader, Cursor};
 use thiserror::Error;

@@ -3,7 +3,7 @@ use void_core::threadpool::rayon::ThreadPoolBuilder;
 use void_engine::App;
 use void_gpu::{api::Gpu, model::ModelDB};
 use void_render::RendererEngine;
-use void_window::{event::WindowEvent, event_loop::EventLoop, window::WindowBuilder, Window};
+use void_window::{event_loop::EventLoop, window::WindowBuilder, Window};
 
 async fn init<'a>() -> anyhow::Result<()> {
     let event_loop = EventLoop::new()?;

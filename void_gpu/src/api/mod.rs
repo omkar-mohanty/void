@@ -30,6 +30,9 @@ pub struct BufferDesc {
     pub stride: usize,
 }
 
+#[derive(Hash, Clone, Copy, PartialEq, Eq)]
+pub struct PipelineId(Uuid);
+
 pub trait IBuffer {}
 
 pub trait IGpuCommandBuffer {}
@@ -39,8 +42,8 @@ pub trait IPipeline {}
 pub trait IBindGroup {}
 
 pub enum GpuPipeline {
-    Render,
-    Compute,
+    Render(wgpu::RenderPipeline),
+    Compute(wgpu::ComputePipeline),
 }
 
 pub struct RenderPassDesc {}
@@ -49,6 +52,7 @@ pub trait IContext {
     type Output;
     type Encoder;
 
+    fn set_pileine(&mut self, id: PipelineId);
     fn set_stage(&self, enc: Self::Encoder);
     fn end(self) -> Self::Output;
 }
@@ -58,6 +62,8 @@ pub trait IGpu {
     type Err: std::error::Error;
 
     fn submit_ctx_output(&self, render_ctx: impl Iterator<Item = Self::CtxOutput>);
+    fn insert_pipeline(&self, pipeline: GpuPipeline) -> PipelineId;
+    fn present(&self) -> Result<(), Self::Err>;
 }
 
 pub trait DrawModel<'a, 'b> {

@@ -18,4 +18,5 @@ version = "1.8.0"
 features = [
     "v6",                # Lets you generate random UUIDs
     "fast-rng",          # Use a faster (but still sufficiently random) RNG
+    "v4",
 ]

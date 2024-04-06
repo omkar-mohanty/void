@@ -4,9 +4,7 @@ pub mod model;
 pub mod texture;
 
 use std::collections::HashMap;
-use std::sync::RwLock;
 use void_core::db::{IDb, IId};
-use void_core::threadpool::rayon::iter::IntoParallelIterator;
 
 pub struct ResourceDB<I: IId, T> {
     resources: HashMap<I, T>,

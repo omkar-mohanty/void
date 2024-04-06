@@ -1,9 +1,6 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
-use void_core::{
-    db::IDb, threadpool::rayon::ThreadPool, FutError, IEvent, IObserver, ISubject, Result,
-    SystemError,
-};
+use void_core::{threadpool::rayon::ThreadPool, Result, SystemError};
 use void_gpu::{api::Gpu, model::ModelDB};
 use void_render::RendererEngine;
 use void_window::{
@@ -34,11 +31,7 @@ where {
                             self.gpu.surface.configure(&self.gpu.device, &config);
                         }
                         WindowEvent::RedrawRequested => {
-                            for model in self.model_db.values() {
-                                self.thread_pool.install(|| {
-                                    self.render_engine.render_model(model);
-                                });
-                            }
+                            self.render_engine.render();
                             self.gpu.window.request_redraw();
                         }
                         _ => {}
