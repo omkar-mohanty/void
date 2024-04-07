@@ -17,36 +17,14 @@ impl CommandListIndex {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum BufferType {
-    Vertex,
-    Uniform,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct BufferDesc {
-    pub size: usize,
-    pub usage: BufferType,
-    pub stride: usize,
+/// Public facing pipeline type. Meant for clints to specify pipeline type.
+pub enum PipelineType {
+    Render,
+    Compute,
 }
 
 #[derive(Hash, Clone, Copy, PartialEq, Eq)]
 pub struct PipelineId(Uuid);
-
-pub trait IBuffer {}
-
-pub trait IGpuCommandBuffer {}
-
-pub trait IPipeline {}
-
-pub trait IBindGroup {}
-
-pub enum GpuPipeline {
-    Render(wgpu::RenderPipeline),
-    Compute(wgpu::ComputePipeline),
-}
-
-pub struct RenderPassDesc {}
 
 pub trait IContext {
     type Output;
@@ -60,15 +38,16 @@ pub trait IContext {
 pub trait IGpu {
     type CtxOutput;
     type Err: std::error::Error;
+    type Pipeline;
 
     fn submit_ctx_output(&self, render_ctx: impl Iterator<Item = Self::CtxOutput>);
-    fn insert_pipeline(&self, pipeline: GpuPipeline) -> PipelineId;
+    fn insert_pipeline(&self, pipeline: Self::Pipeline) -> PipelineId;
     fn window_update(&self, width: u32, height: u32);
     fn present(&self) -> Result<(), Self::Err>;
 }
 
 pub trait DrawModel<'a, 'b> {
-    type BindGroup: IBindGroup;
+    type BindGroup;
     fn draw_mesh(
         &self,
         mesh: &'b Mesh,

@@ -5,6 +5,8 @@ use std::future::Future;
 use egui::Context;
 mod error;
 
+pub use crossbeam_queue;
+
 pub mod db;
 mod threadpool;
 pub use error::*;

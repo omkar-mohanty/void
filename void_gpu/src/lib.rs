@@ -33,4 +33,8 @@ impl<I: IId, T> IDb for ResourceDB<I, T> {
     fn keys(&self) -> impl Iterator<Item = &Self::Id> {
         self.resources.keys()
     }
+    fn insert(&mut self, data: impl Iterator<Item = Self::Data>) {
+        let daten = data.map(|data| (Self::Id::new(), data));
+        self.resources.extend(daten);
+    }
 }

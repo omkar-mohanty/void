@@ -1,8 +1,5 @@
 use super::texture::{Texture, TextureError};
-use crate::api::{
-    CommandListIndex, Displayable, DrawModel, GpuPipeline, IBindGroup, IBuffer, IContext, IGpu,
-    IGpuCommandBuffer, IPipeline, PipelineId,
-};
+use crate::api::{CommandListIndex, Displayable, DrawModel, IContext, IGpu, PipelineId};
 use rand::Rng;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -12,14 +9,6 @@ use std::{
 use thiserror::Error;
 use uuid::Uuid;
 use void_core::rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-
-impl IBuffer for wgpu::CommandBuffer {}
-impl IPipeline for wgpu::RenderPipeline {}
-impl IPipeline for wgpu::ComputePipeline {}
-impl IBuffer for wgpu::Buffer {}
-impl IBindGroup for wgpu::BindGroup {}
-impl IBuffer for wgpu::RenderBundle {}
-impl IGpuCommandBuffer for wgpu::CommandEncoder {}
 
 pub struct Buffer<'a> {
     slot: u32,
@@ -46,7 +35,6 @@ pub enum CtxInterm<'a> {
 
 pub struct StaticRenderCtx<'a, T: Displayable<'a>> {
     render_bundles: RwLock<Vec<wgpu::RenderBundle>>,
-    depth_texture: Option<Texture>,
     gpu: Arc<Gpu<'a, T>>,
     pipeline_id: Option<PipelineId>,
 }
@@ -55,7 +43,6 @@ impl<'a, T: Displayable<'a>> StaticRenderCtx<'a, T> {
     pub fn new(gpu: Arc<Gpu<'a, T>>) -> Self {
         Self {
             render_bundles: RwLock::new(Vec::new()),
-            depth_texture: None,
             gpu,
             pipeline_id: None,
         }
@@ -174,7 +161,6 @@ pub enum RenderType {
 pub struct RenderCmd {
     render_type: RenderType,
     pipeline_id: Option<PipelineId>,
-    depth_tex: Option<Texture>,
 }
 
 pub enum CtxOutput {
@@ -197,7 +183,11 @@ impl<'a, T: Displayable<'a>> IContext for StaticRenderCtx<'a, T> {
                 .create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
                     label: Some("Render Bundle Encoder"),
                     color_formats: &[Some(self.gpu.config.read().unwrap().format)],
-                    depth_stencil: None,
+                    depth_stencil: Some(wgpu::RenderBundleDepthStencil {
+                        format: Texture::DEPTH_FORMAT,
+                        depth_read_only: false,
+                        stencil_read_only: true,
+                    }),
                     sample_count: 1,
                     multiview: None,
                 });
@@ -246,22 +236,25 @@ impl<'a, T: Displayable<'a>> IContext for StaticRenderCtx<'a, T> {
         let pipeline_id = self.pipeline_id;
         CtxOutput::Render(RenderCmd {
             render_type: RenderType::Bundled(bundles),
-            depth_tex: self.depth_texture,
             pipeline_id,
         })
     }
 }
 
 pub struct StaticRenderObject {
-    depth_tex: Option<Texture>,
     bundle: Vec<wgpu::RenderBundle>,
     pipeline_id: Option<PipelineId>,
 }
 
+#[allow(dead_code)]
 pub struct DynamicRenderObject {
-    depth_tex: Option<Texture>,
     cmd: wgpu::CommandBuffer,
     pipeline_id: Option<PipelineId>,
+}
+
+pub enum GpuPipeline {
+    Render(wgpu::RenderPipeline),
+    Compute(wgpu::ComputePipeline),
 }
 
 pub struct Gpu<'a, T>
@@ -279,6 +272,7 @@ where
     dynamic_cmds: RwLock<BTreeMap<CommandListIndex, DynamicRenderObject>>,
     render_pileines: RwLock<HashMap<PipelineId, wgpu::RenderPipeline>>,
     compute_pipelines: RwLock<HashMap<PipelineId, wgpu::ComputePipeline>>,
+    depth_texture: RwLock<Texture>,
 }
 
 impl<'a, T: Displayable<'a> + 'a> Gpu<'a, T> {
@@ -337,6 +331,12 @@ impl<'a, T: Displayable<'a> + 'a> Gpu<'a, T> {
 
         surface.configure(&device, &config);
 
+        let depth_texture = RwLock::new(Texture::create_depth_texture(
+            &device,
+            &config,
+            "Depth Texture",
+        ));
+
         Arc::new(Self {
             adapter,
             surface,
@@ -349,6 +349,7 @@ impl<'a, T: Displayable<'a> + 'a> Gpu<'a, T> {
             dynamic_cmds: RwLock::new(BTreeMap::new()),
             render_pileines: RwLock::new(HashMap::new()),
             compute_pipelines: RwLock::new(HashMap::new()),
+            depth_texture,
         })
     }
 }
@@ -359,15 +360,24 @@ where
 {
     type CtxOutput = CtxOutput;
     type Err = GpuError;
+    type Pipeline = GpuPipeline;
 
     fn window_update(&self, width: u32, height: u32) {
+        if width <= 0 || height <= 0 {
+            return;
+        }
         let mut config_write = self.config.write().unwrap();
+        let mut depth_tex = self.depth_texture.write().unwrap();
         config_write.width = width;
         config_write.height = height;
+        let _ = std::mem::replace(
+            &mut *depth_tex,
+            Texture::create_depth_texture(&self.device, &config_write, "Depth Texture"),
+        );
         self.surface.configure(&self.device, &config_write);
     }
 
-    fn insert_pipeline(&self, pipeline: crate::api::GpuPipeline) -> PipelineId {
+    fn insert_pipeline(&self, pipeline: GpuPipeline) -> PipelineId {
         let id = PipelineId(Uuid::new_v4());
         match pipeline {
             GpuPipeline::Render(pipeline) => {
@@ -383,25 +393,19 @@ where
     fn submit_ctx_output(&self, ctxs: impl Iterator<Item = Self::CtxOutput>) {
         let _ = ctxs.map(|out| match out {
             CtxOutput::Render(render_cmd) => {
-                let depth_tex = render_cmd.depth_tex;
                 let render_type = render_cmd.render_type;
                 let pipeline_id = render_cmd.pipeline_id;
                 match render_type {
                     RenderType::Single(cmd) => {
                         self.dynamic_cmds.write().unwrap().insert(
                             CommandListIndex::new(&self.node_id),
-                            DynamicRenderObject {
-                                depth_tex,
-                                cmd,
-                                pipeline_id,
-                            },
+                            DynamicRenderObject { cmd, pipeline_id },
                         );
                     }
                     RenderType::Bundled(bundle) => {
                         self.static_cmds.write().unwrap().insert(
                             CommandListIndex::new(&self.node_id),
                             StaticRenderObject {
-                                depth_tex,
                                 bundle,
                                 pipeline_id,
                             },
@@ -417,17 +421,16 @@ where
         let surface_tex = self.surface.get_current_texture()?;
         let view = surface_tex
             .texture
-            .create_view(&wgpu::TextureViewDescriptor {
-                label: Some("Surface Texture View"),
-                format: Some(self.config.read().unwrap().format),
-                ..Default::default()
-            });
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
         let mut cmd_encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Cmd Encoder"),
             });
+
+        let depth_tex_read = &self.depth_texture.read().unwrap();
+        let depth_view = &depth_tex_read.view;
 
         {
             let _rpass = cmd_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -445,7 +448,14 @@ where
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
@@ -472,8 +482,27 @@ where
                 {
                     let mut rpass = cmd_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("Static Object Render Pass"),
-                        color_attachments: &[],
-                        depth_stencil_attachment: None,
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color {
+                                    r: 0.1,
+                                    g: 0.2,
+                                    b: 0.3,
+                                    a: 1.0,
+                                }),
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                            view: depth_view,
+                            depth_ops: Some(wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(1.0),
+                                store: wgpu::StoreOp::Store,
+                            }),
+                            stencil_ops: None,
+                        }),
                         timestamp_writes: None,
                         occlusion_query_set: None,
                     });
@@ -497,11 +526,5 @@ pub enum GpuError {
     #[error("Error creating texture {0}")]
     TextureError(#[from] TextureError),
     #[error("Error {0}")]
-    SurfaceError(#[from] wgpu::SurfaceError),
-}
-
-#[derive(Error, Debug)]
-pub enum RenderError {
-    #[error("{0}")]
     SurfaceError(#[from] wgpu::SurfaceError),
 }

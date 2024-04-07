@@ -4,21 +4,14 @@ use uuid::Uuid;
 use void_core::db::IId;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct MaterialId(Uuid);
+pub struct ID(Uuid);
 
-impl IId for MaterialId {}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct MeshId(Uuid);
-
-impl IId for MeshId {}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct ModelId(Uuid);
-
-impl IId for ModelId {}
-
-pub type ModelDB = ResourceDB<ModelId, Model>;
+impl IId for ID {
+    fn new() -> Self {
+        ID(Uuid::new_v4())
+    }
+}
+pub type ModelDB = ResourceDB<ID, Model>;
 
 pub(crate) trait Vertex<T> {
     fn desc() -> T;

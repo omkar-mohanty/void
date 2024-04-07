@@ -1,7 +1,9 @@
 use std::{fmt::Debug, hash::Hash};
 use thiserror::Error;
 
-pub trait IId: Clone + Copy + Hash + Eq + PartialEq + Debug {}
+pub trait IId: Clone + Copy + Hash + Eq + PartialEq + Debug {
+    fn new() -> Self;
+}
 
 pub trait IDb {
     type Id: IId;
@@ -11,6 +13,7 @@ pub trait IDb {
     fn iter(&self) -> impl Iterator<Item = (&Self::Id, &Self::Data)>;
     fn keys(&self) -> impl Iterator<Item = &Self::Id>;
     fn values(&self) -> impl Iterator<Item = &Self::Data>;
+    fn insert(&mut self, data: impl Iterator<Item = Self::Data>);
 }
 
 #[derive(Error, Debug)]
