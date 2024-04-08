@@ -27,7 +27,7 @@ impl<'a> App<'a> {
 where {
         event_loop
             .run(|event, ewlt| {
-                        self.check_resources();
+                self.check_resources();
 
                 match &event {
                     Event::WindowEvent { window_id, event }
@@ -56,8 +56,12 @@ where {
 
     fn check_resources(&self) {
         if let Some(model) = self.model_queue.pop() {
+            log::info!("Model Added");
             self.render_engine.add_model(&model);
-            self.model_db.write().unwrap().insert(std::iter::once(model));
+            self.model_db
+                .write()
+                .unwrap()
+                .insert(std::iter::once(model));
         }
     }
 }

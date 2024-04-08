@@ -2,7 +2,11 @@ use crate::{
     api::{Displayable, Gpu, Texture, TextureError},
     model,
 };
-use std::io::{BufReader, Cursor};
+use std::{
+    fs,
+    io::{BufReader, Cursor},
+    path::PathBuf,
+};
 use thiserror::Error;
 use tobj::LoadError;
 use wgpu::util::DeviceExt;
@@ -19,50 +23,48 @@ fn format_url(file_name: &str) -> reqwest::Url {
     base.join(file_name).unwrap()
 }
 
-pub async fn load_string(file_name: &str) -> Result<String, IoError> {
-    let txt = std::fs::read_to_string(file_name)?;
-
-    Ok(txt)
-}
-
-pub async fn load_binary(file_name: &str) -> Result<Vec<u8>, IoError> {
-    let data = std::fs::read(file_name)?;
-
-    Ok(data)
-}
-
-pub async fn load_texture<'a, T: Displayable<'a>>(
-    file_name: &str,
+pub fn load_texture<'a, T: Displayable<'a>>(
+    file_name: &PathBuf,
     gpu: &Gpu<'a, T>,
 ) -> Result<Texture, IoError> {
     let device = &gpu.device;
     let queue = &gpu.queue;
-    let data = load_binary(file_name).await?;
-    Ok(Texture::from_bytes(device, queue, &data, file_name)?)
+    let data = std::fs::read(file_name)?;
+    Ok(Texture::from_bytes(
+        device,
+        queue,
+        &data,
+        &file_name.display().to_string(),
+    )?)
 }
 
-pub async fn load_model<'a, T: Displayable<'a>>(
-    file_name: &str,
+pub fn load_model<'a, T: Displayable<'a>>(
+    file_path: &PathBuf,
     gpu: &Gpu<'a, T>,
 ) -> Result<model::Model, IoError> {
     let device = &gpu.device;
-    let obj_text = load_string(file_name).await?;
+    let obj_text = fs::read_to_string(file_path)?;
     let obj_cursor = Cursor::new(obj_text);
     let mut obj_reader = BufReader::new(obj_cursor);
 
-    let (models, obj_materials) = tobj::load_obj_buf_async(
+    let parent = file_path.parent().unwrap();
+
+    let (models, obj_materials) = tobj::load_obj_buf(
         &mut obj_reader,
         &tobj::LoadOptions {
             triangulate: true,
             single_index: true,
             ..Default::default()
         },
-        |p| async move {
-            let mat_text = load_string(&p).await.unwrap();
-            tobj::load_mtl_buf(&mut BufReader::new(Cursor::new(mat_text)))
+        |mat_path| {
+            let full_path = if let Some(parent) = file_path.parent() {
+                parent.join(mat_path)
+            } else {
+                mat_path.to_owned()
+            };
+            tobj::load_mtl(full_path)
         },
-    )
-    .await?;
+    )?;
 
     let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         entries: &[
@@ -87,8 +89,9 @@ pub async fn load_model<'a, T: Displayable<'a>>(
     });
 
     let mut materials = Vec::new();
-    for m in obj_materials? {
-        let diffuse_texture = load_texture(&m.diffuse_texture, gpu).await?;
+    let obj_materials = obj_materials?;
+    for m in obj_materials {
+        let diffuse_texture = load_texture(&parent.join(&m.diffuse_texture), gpu)?;
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &layout,
             entries: &[
@@ -131,18 +134,18 @@ pub async fn load_model<'a, T: Displayable<'a>>(
                 .collect::<Vec<_>>();
 
             let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(&format!("{:?} Vertex Buffer", file_name)),
+                label: Some(&format!("{:?} Vertex Buffer", file_path)),
                 contents: bytemuck::cast_slice(&vertices),
                 usage: wgpu::BufferUsages::VERTEX,
             });
             let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(&format!("{:?} Index Buffer", file_name)),
+                label: Some(&format!("{:?} Index Buffer", file_path)),
                 contents: bytemuck::cast_slice(&m.mesh.indices),
                 usage: wgpu::BufferUsages::INDEX,
             });
 
             model::Mesh {
-                name: file_name.to_string(),
+                name: file_path.display().to_string(),
                 vertex_buffer,
                 index_buffer,
                 num_elements: m.mesh.indices.len() as u32,

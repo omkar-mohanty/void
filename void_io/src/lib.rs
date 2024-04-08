@@ -17,24 +17,19 @@ impl<'a, T: Displayable<'a>> IoEngine<'a, T> {
         Self { gpu, model_queue }
     }
 
-    pub async fn handle_window_event(&self, window_event: &WindowEvent) {
+    pub fn handle_window_event(&self, window_event: &WindowEvent) {
         use WindowEvent::*;
         match window_event {
             DroppedFile(path) => {
-                let path = std::path::Path::new(path);
-                if !path.exists() {
-                    log::error!("{} does not exist",path.to_str().unwrap());
-                    return;
-                }
-                let path = path.to_str().unwrap();
-                match void_gpu::io::load_model(path, &self.gpu).await {
+                log::info!("Dropped File");
+                match void_gpu::io::load_model(path, &self.gpu) {
                     Ok(model) => {
                         if let Err(_model) = self.model_queue.push(model) {
                             log::error!("Could not send model queue full!");
                         }
                     }
                     Err(msg) => {
-                        log::error!("Error {msg}");
+                        log::error!("Error: {msg} for {}", path.display());
                     }
                 }
             }
@@ -42,18 +37,17 @@ impl<'a, T: Displayable<'a>> IoEngine<'a, T> {
         }
     }
 
-    pub async fn process_event(&self, event: &Event<()>) {
+    pub fn process_event(&self, event: &Event<()>) {
         use Event::*;
-        log::info!("Processing event");
         match event {
             WindowEvent { event, .. } => {
-                self.handle_window_event(event).await;
+                self.handle_window_event(event);
             }
             _ => {}
         }
     }
 
     pub fn run(&self, event: Event<()>) {
-        futures::executor::block_on(self.process_event(&event));
+        self.process_event(&event);
     }
 }

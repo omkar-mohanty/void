@@ -62,7 +62,6 @@ static CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR: wgpu::BindGroupLayoutDescriptor =
 pub struct PipelineBuilder<'a, T: Displayable<'a>> {
     gpu: Arc<Gpu<'a, T>>,
     shader_src: Option<&'a str>,
-    depth_format: Option<Texture>,
     bind_group_layout_descriptros: Option<Vec<wgpu::BindGroupLayoutDescriptor<'a>>>,
     pipeline_type: PipelineType,
 }
@@ -72,16 +71,12 @@ impl<'a, T: Displayable<'a>> PipelineBuilder<'a, T> {
         Self {
             gpu,
             shader_src: None,
-            depth_format: None,
             pipeline_type,
             bind_group_layout_descriptros: None,
         }
     }
     pub fn set_shader(&mut self, shader_src: &'a str) {
         self.shader_src = Some(shader_src)
-    }
-    pub fn set_depth_format(&mut self, depth_format: Texture) {
-        self.depth_format = Some(depth_format);
     }
     pub fn add_layout_descriptors(
         &mut self,
@@ -107,8 +102,8 @@ impl<'a, T: Displayable<'a>> IBuilder for PipelineBuilder<'a, T> {
         let color_format = self.gpu.config.read().unwrap().format;
 
         let mut layout_descriptors = vec![
-            &CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR,
             &TEXTURE_BIND_GROUP_LAYOUT_DESCRIPTOR,
+            &CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR,
         ];
 
         let descs = self.bind_group_layout_descriptros.unwrap_or(vec![]);
@@ -137,7 +132,7 @@ impl<'a, T: Displayable<'a>> IBuilder for PipelineBuilder<'a, T> {
         let pipeline = match self.pipeline_type {
             PipelineType::Render => {
                 let pipeline = create_render_pipeline(
-                    &self.gpu,
+                    &self.gpu.device,
                     &layout,
                     color_format,
                     Some(Texture::DEPTH_FORMAT),
@@ -158,8 +153,50 @@ impl<'a, T: Displayable<'a>> IBuilder for PipelineBuilder<'a, T> {
     }
 }
 
-fn create_render_pipeline<'a, T: Displayable<'a>>(
-    device: &Gpu<'a, T>,
+pub(crate) fn default_render_pipeline(
+    device: &wgpu::Device,
+    config: &wgpu::SurfaceConfiguration,
+) -> GpuPipeline {
+    let shader_src = DEFAULT_RENDER_SHADER;
+    let color_format = config.format;
+
+    let layout_descriptors = vec![
+        &TEXTURE_BIND_GROUP_LAYOUT_DESCRIPTOR,
+        &CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR,
+    ];
+
+    let bind_group_layouts: Vec<_> = layout_descriptors
+        .into_iter()
+        .map(|descriptor| device.create_bind_group_layout(descriptor))
+        .collect();
+
+    let refs: Vec<_> = bind_group_layouts.iter().collect();
+
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("Model Renderer Pipeline"),
+        bind_group_layouts: &refs,
+        push_constant_ranges: &[],
+    });
+    let shader = wgpu::ShaderModuleDescriptor {
+        label: Some("Shader"),
+        source: wgpu::ShaderSource::Wgsl(shader_src.into()),
+    };
+
+    let pipeline = create_render_pipeline(
+        &device,
+        &layout,
+        color_format,
+        Some(Texture::DEPTH_FORMAT),
+        &[ModelVertex::desc()],
+        wgpu::PrimitiveTopology::TriangleList,
+        shader,
+    );
+
+    GpuPipeline::Render(pipeline)
+}
+
+fn create_render_pipeline(
+    device: &wgpu::Device,
     layout: &wgpu::PipelineLayout,
     color_format: wgpu::TextureFormat,
     depth_format: Option<wgpu::TextureFormat>,
@@ -167,7 +204,6 @@ fn create_render_pipeline<'a, T: Displayable<'a>>(
     topology: wgpu::PrimitiveTopology, // NEW!
     shader: wgpu::ShaderModuleDescriptor,
 ) -> wgpu::RenderPipeline {
-    let device = &device.device;
     let shader = device.create_shader_module(shader);
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

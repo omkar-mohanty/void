@@ -1,4 +1,5 @@
 pub mod api;
+pub mod camera;
 pub mod io;
 pub mod model;
 pub mod texture;
