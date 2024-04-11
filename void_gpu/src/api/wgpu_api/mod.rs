@@ -4,7 +4,6 @@ pub(crate) mod pipeline;
 pub(crate) mod texture;
 
 use crate::model::{ModelVertex, Vertex};
-use thiserror::Error;
 use wgpu::{
     rwh::{HasDisplayHandle, HasWindowHandle},
     SurfaceTarget,
@@ -13,12 +12,6 @@ use wgpu::{
 pub trait Displayable<'a>:
     Sync + Send + HasDisplayHandle + HasWindowHandle + Into<SurfaceTarget<'a>>
 {
-}
-
-#[derive(Error, Debug)]
-pub enum ResourceError {
-    #[error("Surface Error {0}")]
-    SurfaceError(#[from] wgpu::SurfaceError),
 }
 
 impl Vertex<wgpu::VertexBufferLayout<'static>> for ModelVertex {

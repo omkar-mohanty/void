@@ -1,6 +1,6 @@
 use std::{iter, sync::Arc};
 use void_gpu::{
-    api::{Displayable, DrawModel, Gpu, IContext, IGpu, StaticRenderCtx},
+    api::{render_ctx::RenderCtx, Displayable, DrawModel, Gpu, IContext, IGpu},
     model::*,
 };
 
@@ -14,10 +14,7 @@ impl<'a, T: Displayable<'a> + 'a> RendererEngine<'a, T> {
     }
 
     pub fn add_model(&self, model: &'a Model) {
-        let render_ctx = StaticRenderCtx::new(Arc::clone(&self.gpu));
-        render_ctx.draw_model_nbd(model);
-        let ctx_out = render_ctx.end();
-        self.gpu.submit_ctx_output(iter::once(ctx_out));
+        todo!("Add model adding logic");
     }
 
     pub fn render(&self) {

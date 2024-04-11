@@ -3,6 +3,7 @@ use std::ops::Range;
 
 use uuid::Uuid;
 
+use void_core::rayon::iter::{ParallelDrainRange, ParallelIterator};
 use wgpu_api::model::{Material, Mesh, Model};
 pub use wgpu_api::{
     api::*, pipeline::PipelineBuilder, texture::Texture, texture::TextureError, Displayable,
@@ -10,6 +11,45 @@ pub use wgpu_api::{
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct CommandListIndex(Uuid);
+
+pub trait IBuffer {}
+
+pub trait IBindGroup {}
+
+pub trait IPipeline {}
+
+pub trait ICtxOut: Send + Sync {}
+
+pub trait IContext<'a, 'b>
+where
+    'b: 'a,
+{
+    type Pipeline: IPipeline;
+    type BindGroup: IBindGroup;
+    type Out;
+
+    fn new() -> Self;
+    fn set_pipeline(&mut self, pipeline: &'b Self::Pipeline);
+    fn set_bind_group(&mut self, slot: u32, bind_group: &'b Self::BindGroup);
+    fn finish(self) -> Self::Out;
+}
+
+pub trait IRenderContext<'a, 'b>: IContext<'a, 'b> + DrawModel<'a, 'b>
+where
+    'b: 'a,
+{
+    type Buffer: IBuffer;
+
+    fn set_vertex_buffer(&mut self, slot: u32, buffer: &'b Self::Buffer);
+    fn set_index_buffer(&mut self, slot: u32, buffer: &'b Self::Buffer);
+    fn draw(&mut self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>);
+}
+
+pub trait IComputeContext<'a, 'b>: IContext<'a, 'b>
+where
+    'b: 'a,
+{
+}
 
 impl CommandListIndex {
     pub fn new(node_id: &[u8; 6]) -> Self {
@@ -26,58 +66,50 @@ pub enum PipelineType {
 #[derive(Hash, Clone, Copy, PartialEq, Eq)]
 pub struct PipelineId(Uuid);
 
-pub trait IContext {
-    type Output;
-    type Encoder;
-
-    fn set_pileine(&mut self, id: PipelineId);
-    fn set_stage(&self, enc: Self::Encoder);
-    fn end(self) -> Self::Output;
-}
-
 pub trait IGpu {
-    type CtxOutput;
     type Err: std::error::Error;
+    type CtxOut: ICtxOut;
     type Pipeline;
 
-    fn submit_ctx_output(&self, render_ctx: impl Iterator<Item = Self::CtxOutput>);
-    fn insert_pipeline(&self, pipeline: Self::Pipeline) -> PipelineId;
+    fn submit_ctx_out(&self, out: Self::CtxOut);
+    fn submit_ctx_bundled(&self, outs: impl ParallelIterator<Item = Self::CtxOut>)
+    where
+        Self: Sync,
+    {
+        outs.for_each(|out| {
+            self.submit_ctx_out(out);
+        });
+    }
     fn window_update(&self, width: u32, height: u32);
     fn present(&self) -> Result<(), Self::Err>;
 }
 
-pub trait DrawModel<'a, 'b> {
-    type BindGroup;
+pub trait DrawModel<'a, 'b>
+where
+    'b: 'a,
+{
+    type BindGroup: IBindGroup;
     fn draw_mesh(
-        &self,
+        &mut self,
         mesh: &'b Mesh,
         material: &'b Material,
         camera_bind_group: &'b Self::BindGroup,
     );
     fn draw_mesh_instanced(
-        &self,
+        &mut self,
         mesh: &'b Mesh,
         material: &'b Material,
         instances: Range<u32>,
         camera_bind_group: &'b Self::BindGroup,
     );
 
-    fn draw_model(&self, model: &'b Model, camera_bind_group: &'b Self::BindGroup);
+    fn draw_model(&mut self, model: &'b Model, camera_bind_group: &'b Self::BindGroup);
     fn draw_model_instanced(
-        &self,
+        &mut self,
         model: &'b Model,
         instances: Range<u32>,
         camera_bind_group: &'b Self::BindGroup,
     );
-    fn draw_mesh_nbd(&self, mesh: &'b Mesh, material: &'b Material);
-    fn draw_mesh_nbd_instanced(
-        &self,
-        mesh: &'b Mesh,
-        material: &'b Material,
-        instances: Range<u32>,
-    );
-    fn draw_model_nbd(&self, model: &'b Model);
-    fn draw_model_nbd_instanced(&self, model: &'b Model, instances: Range<u32>);
 }
 
 #[cfg(test)]

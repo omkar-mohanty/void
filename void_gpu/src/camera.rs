@@ -1,3 +1,1 @@
-pub trait ICamera {
-    
-}
+pub trait ICamera {}

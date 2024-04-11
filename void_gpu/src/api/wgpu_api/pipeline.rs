@@ -3,9 +3,11 @@ use std::sync::Arc;
 use void_core::IBuilder;
 
 use crate::{
-    api::{Gpu, GpuPipeline, PipelineType, Texture},
+    api::{Gpu, GpuPipeline, IPipeline, PipelineType, Texture},
     model::{ModelVertex, Vertex},
 };
+
+impl IPipeline for wgpu::RenderPipeline {}
 
 use super::Displayable;
 
