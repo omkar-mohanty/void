@@ -2,19 +2,17 @@ use self::render_ctx::{DrawCmd, RenderCtx};
 
 use super::pipeline::default_render_pipeline;
 use super::texture::{Texture, TextureError};
-use crate::api::{CommandListIndex, Displayable, IBuffer, IContext, ICtxOut, IGpu, PipelineId};
+use crate::api::{CommandListIndex, Displayable, IBuffer, ICtxOut, IGpu, PipelineId};
 use rand::Rng;
 use std::{
     collections::{BTreeMap, HashMap},
-    ops::Range,
     sync::{Arc, RwLock},
 };
 use thiserror::Error;
 use uuid::{uuid, Uuid};
 use void_core::rayon::iter::{
-    IntoParallelIterator, IntoParallelRefIterator, ParallelDrainRange, ParallelIterator,
+    IntoParallelIterator, ParallelIterator,
 };
-use wgpu::util::RenderEncoder;
 
 pub mod render_ctx;
 
