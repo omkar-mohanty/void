@@ -1,3 +1,5 @@
+extern crate nalgebra as na;
+
 pub mod api;
 pub mod camera;
 pub mod io;
@@ -5,7 +7,7 @@ pub mod model;
 pub mod texture;
 
 use std::collections::HashMap;
-use void_core::db::{IDb, IId};
+use void_core::{db::{IDb, IId}, rayon::iter::ParallelIterator};
 
 pub struct ResourceDB<I: IId, T> {
     resources: HashMap<I, T>,

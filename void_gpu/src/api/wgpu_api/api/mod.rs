@@ -1,8 +1,10 @@
-use self::render_ctx::{DrawCmd, RenderCtx};
+use render_ctx::{DrawCmd, RenderCtx};
+use wgpu::util::DeviceExt;
 
-use super::pipeline::default_render_pipeline;
+use self::upload_ctx::UploadCtx;
+
 use super::texture::{Texture, TextureError};
-use crate::api::{CommandListIndex, Displayable, IBuffer, ICtxOut, IGpu, PipelineId};
+use crate::api::{BufferId, CommandListIndex, Displayable, IBuffer, ICtxOut, IGpu, PipelineId};
 use rand::Rng;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -10,16 +12,18 @@ use std::{
 };
 use thiserror::Error;
 use uuid::{uuid, Uuid};
-use void_core::rayon::iter::{
-    IntoParallelIterator, ParallelIterator,
-};
+use void_core::rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 pub mod render_ctx;
+pub mod upload_ctx;
 
 impl IBuffer for wgpu::Buffer {}
 
 static DEFAULT_RENDER_PIPELINE: PipelineId =
     PipelineId(uuid!("5b929ea6-7547-4e70-89a0-6f9ad7f9ffe4"));
+
+pub(crate) static DEFAULT_CAMERA_BUFFER_ID: BufferId =
+    BufferId(uuid!("5b929ea6-7547-4e70-89a0-6f9ad7f9ffe4"));
 
 trait IEncoder<'a> {
     fn set_render_pipeline(&mut self, pipeline: &'a wgpu::RenderPipeline);
@@ -52,6 +56,7 @@ impl<'a> IEncoder<'a> for wgpu::ComputePass<'a> {
 
 pub enum CtxOut<'a, 'b> {
     Render(RenderCtx<'a, 'b>),
+    Update(UploadCtx<'a, 'b>),
 }
 
 impl ICtxOut for CtxOut<'_, '_> {}
@@ -59,34 +64,6 @@ impl ICtxOut for CtxOut<'_, '_> {}
 pub enum GpuPipeline {
     Render(wgpu::RenderPipeline),
     Compute(wgpu::ComputePipeline),
-}
-
-pub struct PipelineDB {
-    pipelines: HashMap<PipelineId, GpuPipeline>,
-}
-
-impl PipelineDB {
-    pub async fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
-        let pipeline = default_render_pipeline(device, config);
-        let mut pipelines = HashMap::new();
-
-        pipelines.insert(DEFAULT_RENDER_PIPELINE, pipeline);
-        Self { pipelines }
-    }
-
-    pub fn insert_pipeline(&mut self, pipeline: GpuPipeline) -> PipelineId {
-        let id = PipelineId(Uuid::new_v4());
-        self.pipelines.insert(id, pipeline);
-        id
-    }
-
-    pub fn set_pipeline<'a>(&'a self, id: PipelineId, encoder: &mut dyn IEncoder<'a>) {
-        let pipeline = self.pipelines.get(&id).unwrap();
-        match pipeline {
-            GpuPipeline::Render(pipeline) => encoder.set_render_pipeline(pipeline),
-            GpuPipeline::Compute(pipeline) => encoder.set_compute_pipeline(pipeline),
-        };
-    }
 }
 
 pub struct Gpu<'a, T>
@@ -101,6 +78,7 @@ where
     node_id: [u8; 6],
     render_ctxs: RwLock<BTreeMap<CommandListIndex, RenderCtx<'a, 'a>>>,
     static_cmds: RwLock<BTreeMap<CommandListIndex, wgpu::RenderBundle>>,
+    pub(crate) buffers: RwLock<HashMap<BufferId, wgpu::Buffer>>,
     depth_texture: RwLock<Texture>,
 }
 
@@ -166,6 +144,16 @@ impl<'a, T: Displayable<'a> + 'a> Gpu<'a, T> {
             "Depth Texture",
         ));
 
+        let mut buffers = HashMap::new();
+
+        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: &[],
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+
+        buffers.insert(DEFAULT_CAMERA_BUFFER_ID, camera_buffer);
+
         Arc::new(Self {
             surface,
             device,
@@ -175,8 +163,23 @@ impl<'a, T: Displayable<'a> + 'a> Gpu<'a, T> {
             node_id: rand::thread_rng().gen::<[u8; 6]>(),
             render_ctxs: RwLock::new(BTreeMap::new()),
             static_cmds: RwLock::new(BTreeMap::new()),
+            buffers: RwLock::new(buffers),
             depth_texture,
         })
+    }
+
+    fn update_buffers(&self, ctx: UploadCtx) {
+        let UploadCtx {
+            buffer_id, data, ..
+        } = ctx;
+
+        let buffers_read = self.buffers.read().unwrap();
+
+        if let Some(id) = buffer_id {
+            if let Some(buffer) = buffers_read.get(&id) {
+                self.queue.write_buffer(buffer, 0, data.unwrap_or(&[]));
+            }
+        }
     }
 }
 
@@ -187,6 +190,19 @@ where
     type Err = GpuError;
     type CtxOut = CtxOut<'a, 'a>;
     type Pipeline = GpuPipeline;
+
+    fn create_buffer(&self) -> BufferId {
+        let mut buffers = self.buffers.write().unwrap();
+        let buffer_desc = wgpu::util::BufferInitDescriptor {
+            label: Some("Uniform Buffer"),
+            usage: wgpu::BufferUsages::UNIFORM,
+            contents: &[],
+        };
+        let buffer = self.device.create_buffer_init(&buffer_desc);
+        let id = BufferId(Uuid::new_v4());
+        buffers.insert(id, buffer);
+        id
+    }
 
     fn window_update(&self, width: u32, height: u32) {
         if width <= 0 || height <= 0 {
@@ -207,8 +223,9 @@ where
         let mut render_ctxs_write = self.render_ctxs.write().unwrap();
         match out {
             CtxOut::Render(ctx) => {
-                render_ctxs_write.insert(CommandListIndex::new(&self.node_id), ctx)
+                render_ctxs_write.insert(CommandListIndex::new(&self.node_id), ctx);
             }
+            CtxOut::Update(ctx) => self.update_buffers(ctx),
         };
     }
 

@@ -3,14 +3,19 @@ use std::ops::Range;
 
 use uuid::Uuid;
 
-use void_core::rayon::iter::{ParallelDrainRange, ParallelIterator};
+use void_core::rayon::iter::ParallelIterator;
 use wgpu_api::model::{Material, Mesh, Model};
 pub use wgpu_api::{
-    api::*, pipeline::PipelineBuilder, texture::Texture, texture::TextureError, Displayable,
+    api::*, camera, pipeline::PipelineBuilder, texture::Texture, texture::TextureError, Displayable,
 };
+
+use crate::camera::{ICamera, UpdateCamera};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct CommandListIndex(Uuid);
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub struct BufferId(Uuid);
 
 pub trait IBuffer {}
 
@@ -24,13 +29,8 @@ pub trait IContext<'a, 'b>
 where
     'b: 'a,
 {
-    type Pipeline: IPipeline;
-    type BindGroup: IBindGroup;
     type Out;
-
     fn new() -> Self;
-    fn set_pipeline(&mut self, pipeline: &'b Self::Pipeline);
-    fn set_bind_group(&mut self, slot: u32, bind_group: &'b Self::BindGroup);
     fn finish(self) -> Self::Out;
 }
 
@@ -39,10 +39,21 @@ where
     'b: 'a,
 {
     type Buffer: IBuffer;
+    type Pipeline: IPipeline;
+    type BindGroup: IBindGroup;
 
+    fn set_pipeline(&mut self, pipeline: &'b Self::Pipeline);
+    fn set_bind_group(&mut self, slot: u32, bind_group: &'b Self::BindGroup);
     fn set_vertex_buffer(&mut self, slot: u32, buffer: &'b Self::Buffer);
     fn set_index_buffer(&mut self, slot: u32, buffer: &'b Self::Buffer);
     fn draw(&mut self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>);
+}
+
+pub trait IUploadContext<'a, 'b>: IContext<'a, 'b> + UpdateCamera<'a, 'b>
+where
+    'b: 'a,
+{
+    fn upload_buffer(&mut self, buffer_id: BufferId, data: &'b [u8]);
 }
 
 pub trait IComputeContext<'a, 'b>: IContext<'a, 'b>
@@ -80,6 +91,7 @@ pub trait IGpu {
             self.submit_ctx_out(out);
         });
     }
+    fn create_buffer(&self) -> BufferId;
     fn window_update(&self, width: u32, height: u32);
     fn present(&self) -> Result<(), Self::Err>;
 }
@@ -88,27 +100,27 @@ pub trait DrawModel<'a, 'b>
 where
     'b: 'a,
 {
-    type BindGroup: IBindGroup;
+    type Camera: ICamera;
     fn draw_mesh(
-        &mut self,
+        &'a mut self,
         mesh: &'b Mesh,
         material: &'b Material,
-        camera_bind_group: &'b Self::BindGroup,
+        camera_bind_group: &'b Self::Camera,
     );
     fn draw_mesh_instanced(
         &mut self,
         mesh: &'b Mesh,
         material: &'b Material,
         instances: Range<u32>,
-        camera_bind_group: &'b Self::BindGroup,
+        camera_bind_group: &'b Self::Camera,
     );
 
-    fn draw_model(&mut self, model: &'b Model, camera_bind_group: &'b Self::BindGroup);
+    fn draw_model(&'a mut self, model: &'b Model, camera_bind_group: &'b Self::Camera);
     fn draw_model_instanced(
         &mut self,
         model: &'b Model,
         instances: Range<u32>,
-        camera_bind_group: &'b Self::BindGroup,
+        camera_bind_group: &'b Self::Camera,
     );
 }
 

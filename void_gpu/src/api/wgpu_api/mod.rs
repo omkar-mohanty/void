@@ -1,4 +1,5 @@
 pub(crate) mod api;
+pub mod camera;
 pub(crate) mod model;
 pub(crate) mod pipeline;
 pub(crate) mod texture;

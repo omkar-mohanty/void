@@ -1,5 +1,6 @@
 use wgpu::DynamicOffset;
 
+use crate::api::wgpu_api::camera::Camera;
 use crate::api::{DrawModel, IBindGroup, IContext, IRenderContext};
 use crate::model;
 
@@ -13,20 +14,10 @@ impl<'a, 'b> IContext<'a, 'b> for RenderCtx<'a, 'b>
 where
     'b: 'a,
 {
-    type Pipeline = wgpu::RenderPipeline;
-    type BindGroup = wgpu::BindGroup;
     type Out = CtxOut<'a, 'b>;
 
     fn new() -> Self {
         Self::default()
-    }
-
-    fn set_pipeline(&mut self, pipeline: &'b Self::Pipeline) {
-        self.pipeline = Some(pipeline);
-    }
-
-    fn set_bind_group(&mut self, slot: u32, group: &'b Self::BindGroup) {
-        self.bind_groups.push((slot, group, &[]));
     }
 
     fn finish(self) -> Self::Out {
@@ -38,17 +29,17 @@ impl<'a, 'b> DrawModel<'a, 'b> for RenderCtx<'a, 'b>
 where
     'b: 'a,
 {
-    type BindGroup = wgpu::BindGroup;
+    type Camera = Camera;
 
     fn draw_mesh(
-        &mut self,
+        &'a mut self,
         mesh: &'b model::Mesh,
         material: &'b model::Material,
-        camera_bind_group: &'b Self::BindGroup,
+        camera_bind_group: &'b Self::Camera,
     ) {
         self.draw_mesh_instanced(mesh, material, 0..1, camera_bind_group)
     }
-    fn draw_model(&mut self, model: &'b model::Model, camera_bind_group: &'b Self::BindGroup) {
+    fn draw_model(&'a mut self, model: &'b model::Model, camera_bind_group: &'b Self::Camera) {
         self.draw_model_instanced(model, 0..1, camera_bind_group)
     }
     fn draw_mesh_instanced(
@@ -56,7 +47,7 @@ where
         mesh: &'b model::Mesh,
         material: &'b model::Material,
         instances: Range<u32>,
-        camera_bind_group: &'b Self::BindGroup,
+        camera_bind_group: &'b Self::Camera,
     ) {
         self.set_vertex_buffer(0, &mesh.vertex_buffer);
         self.set_index_buffer(1, &mesh.index_buffer);
@@ -68,7 +59,7 @@ where
         &mut self,
         model: &'b model::Model,
         instances: Range<u32>,
-        camera_bind_group: &'b Self::BindGroup,
+        camera_bind_group: &'b Self::Camera,
     ) {
         for mesh in &model.meshes {
             let material = &model.materials[mesh.material];
@@ -81,7 +72,18 @@ impl<'a, 'b> IRenderContext<'a, 'b> for RenderCtx<'a, 'b>
 where
     'b: 'a,
 {
+    type Pipeline = wgpu::RenderPipeline;
+    type BindGroup = wgpu::BindGroup;
     type Buffer = wgpu::Buffer;
+
+    fn set_pipeline(&mut self, pipeline: &'b Self::Pipeline) {
+        self.pipeline = Some(pipeline);
+    }
+
+    fn set_bind_group(&mut self, slot: u32, group: &'b Self::BindGroup) {
+        self.bind_groups.push((slot, group, &[]));
+    }
+
     fn draw(&mut self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>) {
         self.draw_cmd = Some(DrawCmd {
             indices,
@@ -111,7 +113,7 @@ where
 }
 
 #[derive(Default)]
-pub(super) struct DrawCmd {
+pub(crate) struct DrawCmd {
     pub(super) indices: Range<u32>,
     pub(super) base_vertex: i32,
     pub(super) instances: Range<u32>,

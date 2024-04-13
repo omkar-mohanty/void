@@ -17,13 +17,12 @@ pub struct App<'a> {
     pub gpu: Arc<Gpu<'a, Window>>,
     pub render_engine: RendererEngine<'a, Window>,
     pub thread_pool: Arc<ThreadPool>,
-    pub model_db: Arc<RwLock<ModelDB>>,
     pub model_queue: Arc<ArrayQueue<Model>>,
     pub io_engine: IoEngine<'a, Window>,
 }
 
 impl<'a> App<'a> {
-    pub async fn run(self, event_loop: EventLoop<()>) -> Result<(), SystemError<()>>
+    pub async fn run(mut self, event_loop: EventLoop<()>) -> Result<(), SystemError<()>>
 where {
         event_loop
             .run(|event, ewlt| {
@@ -54,14 +53,10 @@ where {
         Ok(())
     }
 
-    fn check_resources(&self) {
+    fn check_resources(&mut self) {
         if let Some(model) = self.model_queue.pop() {
             log::info!("Model Added");
-            self.render_engine.add_model(&model);
-            self.model_db
-                .write()
-                .unwrap()
-                .insert(std::iter::once(model));
+            self.render_engine.add_model(model);
         }
     }
 }

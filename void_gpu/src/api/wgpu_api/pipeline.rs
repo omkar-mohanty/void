@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    cell::OnceCell,
+    sync::{Arc, OnceLock},
+};
 
 use void_core::IBuilder;
 
@@ -22,7 +25,7 @@ static FRAGMENT_ENTRY: &'static str = "fs_main";
 static DEFAULT_RENDER_SHADER: &'static str = include_str!("shader.wgsl");
 
 /// Texture [```wgpu::BindGroupLayoutDescriptor]
-static TEXTURE_BIND_GROUP_LAYOUT_DESCRIPTOR: wgpu::BindGroupLayoutDescriptor =
+pub(crate) static TEXTURE_BIND_GROUP_LAYOUT_DESCRIPTOR: wgpu::BindGroupLayoutDescriptor =
     wgpu::BindGroupLayoutDescriptor {
         entries: &[
             wgpu::BindGroupLayoutEntry {
@@ -46,7 +49,7 @@ static TEXTURE_BIND_GROUP_LAYOUT_DESCRIPTOR: wgpu::BindGroupLayoutDescriptor =
     };
 
 /// Camera [```wgpu::BindGroupLayoutDescriptor```]
-static CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR: wgpu::BindGroupLayoutDescriptor =
+pub(crate) static CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR: wgpu::BindGroupLayoutDescriptor =
     wgpu::BindGroupLayoutDescriptor {
         entries: &[wgpu::BindGroupLayoutEntry {
             binding: 0,
