@@ -1,7 +1,5 @@
 use std::marker::PhantomData;
 
-use rand::distributions::uniform;
-
 use crate::{
     api::{BufferId, IContext, IUploadContext},
     camera::{CameraUniform, UpdateCamera},
@@ -10,17 +8,16 @@ use crate::{
 use super::{CtxOut, DEFAULT_CAMERA_BUFFER_ID};
 
 #[derive(Default)]
-pub struct UploadCtx<'a, 'b> {
+pub struct UploadCtx<'a> {
     pub(crate) buffer_id: Option<BufferId>,
-    pub(crate) data: Option<&'b [u8]>,
+    pub(crate) data: Option<&'a [u8]>,
     pub(crate) _phantom: PhantomData<&'a ()>,
 }
 
-impl<'a, 'b> IContext<'a, 'b> for UploadCtx<'a, 'b>
+impl<'a> IContext for UploadCtx<'a>
 where
-    'b: 'a,
 {
-    type Out = CtxOut<'a, 'b>;
+    type Out = CtxOut<'a>;
     fn new() -> Self {
         Self::default()
     }
@@ -29,20 +26,17 @@ where
     }
 }
 
-impl<'a, 'b> UpdateCamera<'a, 'b> for UploadCtx<'a, 'b>
+impl<'a> UpdateCamera<'a> for UploadCtx<'a>
 where
-    'b: 'a,
 {
-    fn update_camera(&mut self, uniform: &'b [CameraUniform]) {
+    fn update_camera(&mut self, uniform: &'a [CameraUniform]) {
         self.upload_buffer(DEFAULT_CAMERA_BUFFER_ID, bytemuck::cast_slice(uniform));
     }
 }
 
-impl<'a, 'b> IUploadContext<'a, 'b> for UploadCtx<'a, 'b>
-where
-    'b: 'a,
+impl<'a> IUploadContext<'a> for UploadCtx<'a>
 {
-    fn upload_buffer(&mut self, buffer_id: BufferId, data: &'b [u8]) {
+    fn upload_buffer(&mut self, buffer_id: BufferId, data: &'a [u8]) {
         self.data = Some(data);
         self.buffer_id = Some(buffer_id);
     }

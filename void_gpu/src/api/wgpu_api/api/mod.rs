@@ -54,12 +54,12 @@ impl<'a> IEncoder<'a> for wgpu::ComputePass<'a> {
     }
 }
 
-pub enum CtxOut<'a, 'b> {
-    Render(RenderCtx<'a, 'b>),
-    Update(UploadCtx<'a, 'b>),
+pub enum CtxOut<'a> {
+    Render(RenderCtx<'a>),
+    Update(UploadCtx<'a>),
 }
 
-impl ICtxOut for CtxOut<'_, '_> {}
+impl ICtxOut for CtxOut<'_> {}
 
 pub enum GpuPipeline {
     Render(wgpu::RenderPipeline),
@@ -76,7 +76,7 @@ where
     pub(crate) config: RwLock<wgpu::SurfaceConfiguration>,
     pub window: Arc<T>,
     node_id: [u8; 6],
-    render_ctxs: RwLock<BTreeMap<CommandListIndex, RenderCtx<'a, 'a>>>,
+    render_ctxs: RwLock<BTreeMap<CommandListIndex, RenderCtx<'a>>>,
     static_cmds: RwLock<BTreeMap<CommandListIndex, wgpu::RenderBundle>>,
     pub(crate) buffers: RwLock<HashMap<BufferId, wgpu::Buffer>>,
     depth_texture: RwLock<Texture>,
@@ -183,12 +183,12 @@ impl<'a, T: Displayable<'a> + 'a> Gpu<'a, T> {
     }
 }
 
-impl<'a, 'b, T> IGpu for Gpu<'a, T>
+impl<'a,T> IGpu for Gpu<'a, T>
 where
     T: Displayable<'a> + 'a,
 {
     type Err = GpuError;
-    type CtxOut = CtxOut<'a, 'a>;
+    type CtxOut = CtxOut<'a>;
     type Pipeline = GpuPipeline;
 
     fn create_buffer(&self) -> BufferId {

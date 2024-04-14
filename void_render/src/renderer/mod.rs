@@ -29,14 +29,12 @@ impl<'a, T: Displayable<'a> + 'a> RendererEngine<'a, T> {
     }
 
     pub fn render(&self) {
-      let outs =  self.model_db.iter().map(|(_, model)| {
+      let outs:Vec<_> =  self.model_db.iter().map(|(_, model)| {
             let mut ctx = RenderCtx::new();
             ctx.draw_model(model, &self.camera);
-            ctx.finish()
-        });
-        for out in outs {
+            let out = ctx.finish();
             self.gpu.submit_ctx_out(out);
-        }
+        }).collect();
         self.gpu.present().unwrap();
     }
 }

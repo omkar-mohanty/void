@@ -25,38 +25,35 @@ pub trait IPipeline {}
 
 pub trait ICtxOut: Send + Sync {}
 
-pub trait IContext<'a, 'b>
+pub trait IContext
 where
-    'b: 'a,
 {
     type Out;
     fn new() -> Self;
     fn finish(self) -> Self::Out;
 }
 
-pub trait IRenderContext<'a, 'b>: IContext<'a, 'b> + DrawModel<'a, 'b>
+pub trait IRenderContext<'a>: IContext + DrawModel<'a>
 where
-    'b: 'a,
 {
     type Buffer: IBuffer;
     type Pipeline: IPipeline;
     type BindGroup: IBindGroup;
 
-    fn set_pipeline(&mut self, pipeline: &'b Self::Pipeline);
-    fn set_bind_group(&mut self, slot: u32, bind_group: &'b Self::BindGroup);
-    fn set_vertex_buffer(&mut self, slot: u32, buffer: &'b Self::Buffer);
-    fn set_index_buffer(&mut self, slot: u32, buffer: &'b Self::Buffer);
+    fn set_pipeline(&mut self, pipeline: &'a Self::Pipeline);
+    fn set_bind_group(&mut self, slot: u32, bind_group: &'a Self::BindGroup);
+    fn set_vertex_buffer(&mut self, slot: u32, buffer: &'a Self::Buffer);
+    fn set_index_buffer(&mut self, slot: u32, buffer: &'a Self::Buffer);
     fn draw(&mut self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>);
 }
 
-pub trait IUploadContext<'a, 'b>: IContext<'a, 'b> + UpdateCamera<'a, 'b>
+pub trait IUploadContext<'a>: IContext + UpdateCamera<'a>
 where
-    'b: 'a,
 {
-    fn upload_buffer(&mut self, buffer_id: BufferId, data: &'b [u8]);
+    fn upload_buffer(&mut self, buffer_id: BufferId, data: &'a [u8]);
 }
 
-pub trait IComputeContext<'a, 'b>: IContext<'a, 'b>
+pub trait IComputeContext<'a, 'b>: IContext
 where
     'b: 'a,
 {
@@ -96,13 +93,12 @@ pub trait IGpu {
     fn present(&self) -> Result<(), Self::Err>;
 }
 
-pub trait DrawModel<'a, 'b>
+pub trait DrawModel<'b>
 where
-    'b: 'a,
 {
     type Camera: ICamera;
     fn draw_mesh(
-        &'a mut self,
+        &mut self,
         mesh: &'b Mesh,
         material: &'b Material,
         camera_bind_group: &'b Self::Camera,
@@ -115,7 +111,7 @@ where
         camera_bind_group: &'b Self::Camera,
     );
 
-    fn draw_model(&'a mut self, model: &'b Model, camera_bind_group: &'b Self::Camera);
+    fn draw_model(&mut self, model: &'b Model, camera_bind_group: &'b Self::Camera);
     fn draw_model_instanced(
         &mut self,
         model: &'b Model,
