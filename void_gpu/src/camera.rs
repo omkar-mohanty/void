@@ -26,8 +26,6 @@ impl CameraUniform {
     }
 }
 
-pub trait UpdateCamera<'a>
-where
-{
+pub trait UpdateCamera<'a> {
     fn update_camera(&mut self, uniform: &'a [CameraUniform]);
 }

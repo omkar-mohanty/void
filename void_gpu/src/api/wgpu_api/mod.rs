@@ -7,8 +7,14 @@ pub(crate) mod texture;
 use crate::model::{ModelVertex, Vertex};
 use wgpu::{
     rwh::{HasDisplayHandle, HasWindowHandle},
-    SurfaceTarget,
+    SurfaceTarget, SurfaceTargetUnsafe,
 };
+
+pub trait IDisplayable: Sync + Send + HasDisplayHandle + HasWindowHandle{
+    fn get_inner(&self) -> wgpu::SurfaceTarget {
+        SurfaceTarget::Window(Box::new(self))
+    }
+}
 
 pub trait Displayable<'a>:
     Sync + Send + HasDisplayHandle + HasWindowHandle + Into<SurfaceTarget<'a>>

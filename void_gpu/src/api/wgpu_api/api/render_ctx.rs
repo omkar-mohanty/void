@@ -1,32 +1,26 @@
-use wgpu::DynamicOffset;
+use uuid::Uuid;
 
 use crate::api::wgpu_api::camera::Camera;
-use crate::api::{DrawModel, IBindGroup, IContext, IRenderContext};
+use crate::api::{Displayable, DrawModel, IBindGroup, IContext, IRenderContext, PipelineId};
 use crate::model;
 
-use super::CtxOut;
-use std::marker::PhantomData;
+use super::{CtxOut, Gpu, RenderCmd};
 use std::ops::Range;
+use std::sync::Arc;
 
 impl IBindGroup for wgpu::BindGroup {}
 
-impl<'a> IContext for RenderCtx<'a>
-where
-{
-    type Out = CtxOut<'a>;
-
-    fn new() -> Self {
-        Self::default()
-    }
+impl IContext for RenderCtx {
+    type Out = CtxOut;
 
     fn finish(self) -> Self::Out {
         CtxOut::Render(self)
     }
 }
 
-impl<'a, 'b> DrawModel<'a> for RenderCtx<'b>
+impl<'a, 'b> DrawModel<'a> for RenderCtx
 where
-    'a:'b
+    'a: 'b,
 {
     type Camera = Camera;
 
@@ -67,46 +61,63 @@ where
     }
 }
 
-impl<'a> IRenderContext<'a> for RenderCtx<'a>
-where
-{
-    type Pipeline = wgpu::RenderPipeline;
+impl<'a> IRenderContext<'a> for RenderCtx {
     type BindGroup = wgpu::BindGroup;
     type Buffer = wgpu::Buffer;
 
-    fn set_pipeline(&mut self, pipeline: &'a Self::Pipeline) {
-        self.pipeline = Some(pipeline);
+    fn set_pipeline(&mut self, pipeline: PipelineId) {
+        self.encode(move |cmd| {
+            cmd.pipeline = Some(pipeline);
+        });
     }
 
     fn set_bind_group(&mut self, slot: u32, group: &'a Self::BindGroup) {
-        self.bind_groups.push((slot, group, &[]));
+        let mut render_cmds = self.gpu.context_manager.render_ctxs.write().unwrap();
+        let cmd = render_cmds.get_mut(&self.id).unwrap();
+        cmd.bind_groups.push((slot, group, &[]));
     }
 
     fn draw(&mut self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>) {
-        self.draw_cmd = Some(DrawCmd {
+        let mut render_cmds = self.gpu.context_manager.render_ctxs.write().unwrap();
+        let cmd = render_cmds.get_mut(&self.id).unwrap();
+        cmd.draw_cmd = Some(DrawCmd {
             indices,
-            instances,
             base_vertex,
+            instances,
         });
     }
     fn set_index_buffer(&mut self, _slot: u32, buffer: &'a Self::Buffer) {
-        self.index_buffer = Some(buffer)
+        let mut render_cmds = self.gpu.context_manager.render_ctxs.write().unwrap();
+        let cmd = render_cmds.get_mut(&self.id).unwrap();
+        cmd.index_buffer = Some(buffer);
     }
     fn set_vertex_buffer(&mut self, slot: u32, buffer: &'a Self::Buffer) {
-        self.vertex_buffer = Some((slot, buffer))
+        let mut render_cmds = self.gpu.context_manager.render_ctxs.write().unwrap();
+        let cmd = render_cmds.get_mut(&self.id).unwrap();
+        cmd.vertex_buffer = Some((slot, buffer));
     }
 }
 
-#[derive(Default)]
-pub struct RenderCtx<'a>
-where
-{
-    pub(crate) bind_groups: Vec<(u32, &'a wgpu::BindGroup, &'a [DynamicOffset])>,
-    pub(crate) vertex_buffer: Option<(u32, &'a wgpu::Buffer)>,
-    pub(crate) index_buffer: Option<&'a wgpu::Buffer>,
-    pub(crate) pipeline: Option<&'a wgpu::RenderPipeline>,
-    pub(crate) draw_cmd: Option<DrawCmd>,
-    _phantom: PhantomData<&'a ()>,
+pub struct RenderCtx {
+    gpu: Arc<Gpu>,
+    pub(crate) id: Uuid,
+}
+
+impl RenderCtx {
+    pub fn new(gpu: Arc<Gpu>) -> Self {
+        let mgr = &gpu.context_manager;
+        let id = Uuid::new_v4();
+        let mut ctxs = mgr.render_ctxs.write().unwrap();
+        ctxs.insert(id, RenderCmd::default());
+        drop(ctxs);
+        Self { gpu, id }
+    }
+
+    fn encode<F: FnMut(&mut RenderCmd)>(&self, mut func: F) {
+        let mut render_cmds = self.gpu.context_manager.render_ctxs.write().unwrap();
+        let cmd = render_cmds.get_mut(&self.id).unwrap();
+        func(cmd);
+    }
 }
 
 #[derive(Default)]

@@ -1,14 +1,17 @@
 use render_ctx::{DrawCmd, RenderCtx};
-use wgpu::util::DeviceExt;
+use wgpu::{core::instance, util::DeviceExt};
 
 use self::upload_ctx::UploadCtx;
 
-use super::texture::{Texture, TextureError};
+use super::{
+    pipeline::default_render_pipeline,
+    texture::{Texture, TextureError},
+    IDisplayable,
+};
 use crate::api::{BufferId, CommandListIndex, Displayable, IBuffer, ICtxOut, IGpu, PipelineId};
 use rand::Rng;
 use std::{
-    collections::{BTreeMap, HashMap},
-    sync::{Arc, RwLock},
+    cell::OnceCell, collections::{BTreeMap, HashMap}, ops::Deref, sync::{Arc, OnceLock, RwLock, RwLockWriteGuard}
 };
 use thiserror::Error;
 use uuid::{uuid, Uuid};
@@ -19,77 +22,89 @@ pub mod upload_ctx;
 
 impl IBuffer for wgpu::Buffer {}
 
-static DEFAULT_RENDER_PIPELINE: PipelineId =
-    PipelineId(uuid!("5b929ea6-7547-4e70-89a0-6f9ad7f9ffe4"));
-
 pub(crate) static DEFAULT_CAMERA_BUFFER_ID: BufferId =
     BufferId(uuid!("5b929ea6-7547-4e70-89a0-6f9ad7f9ffe4"));
 
-trait IEncoder<'a> {
-    fn set_render_pipeline(&mut self, pipeline: &'a wgpu::RenderPipeline);
-    fn set_compute_pipeline(&mut self, pipeline: &'a wgpu::ComputePipeline);
+pub(crate) static SURFACE: OnceLock<wgpu::Surface> = OnceLock::new();
+pub(crate) static WINDOW: OnceLock<Arc<dyn IDisplayable>> = OnceLock::new();
+pub(crate) static CONTEXTS: OnceLock<ContextManager> = OnceLock::new();
+
+#[derive(Default)]
+pub struct RenderCmd<'a> {
+    pub(crate) bind_groups: Vec<(u32, &'a wgpu::BindGroup, &'a [wgpu::DynamicOffset])>,
+    pub(crate) vertex_buffer: Option<(u32, &'a wgpu::Buffer)>,
+    pub(crate) index_buffer: Option<&'a wgpu::Buffer>,
+    pub(crate) pipeline: Option<PipelineId>,
+    pub(crate) draw_cmd: Option<DrawCmd>,
 }
 
-impl<'a> IEncoder<'a> for wgpu::RenderBundleEncoder<'a> {
-    fn set_render_pipeline(&mut self, pipeline: &'a wgpu::RenderPipeline) {
-        self.set_pipeline(pipeline);
+#[derive(Default)]
+pub struct ContextManager<'a> {
+    pub(crate) render_ctxs: RwLock<HashMap<Uuid, RenderCmd<'a>>>,
+}
+
+pub struct PipelineDB {
+    pub(crate) pipelines: HashMap<PipelineId, GpuPipeline>,
+    default_pipeline_id: PipelineId,
+}
+
+impl PipelineDB {
+    pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
+        let mut pipelines = HashMap::new();
+        let pipeline = default_render_pipeline(device, config);
+        let default_pipeline_id = PipelineId(Uuid::new_v4());
+
+        pipelines.insert(default_pipeline_id, pipeline);
+
+        Self {
+            pipelines,
+            default_pipeline_id,
+        }
     }
 
-    fn set_compute_pipeline(&mut self, _pipeline: &wgpu::ComputePipeline) {}
-}
-
-impl<'a> IEncoder<'a> for wgpu::RenderPass<'a> {
-    fn set_render_pipeline(&mut self, pipeline: &'a wgpu::RenderPipeline) {
-        self.set_pipeline(pipeline);
-    }
-
-    fn set_compute_pipeline(&mut self, _pipeline: &wgpu::ComputePipeline) {}
-}
-
-impl<'a> IEncoder<'a> for wgpu::ComputePass<'a> {
-    fn set_render_pipeline(&mut self, _pipeline: &'a wgpu::RenderPipeline) {}
-
-    fn set_compute_pipeline(&mut self, pipeline: &'a wgpu::ComputePipeline) {
-        self.set_pipeline(pipeline);
+    pub fn get_default(&self) -> &GpuPipeline {
+        self.pipelines.get(&self.default_pipeline_id).unwrap()
     }
 }
 
-pub enum CtxOut<'a> {
-    Render(RenderCtx<'a>),
-    Update(UploadCtx<'a>),
+pub enum CtxOut {
+    Render(RenderCtx),
 }
 
-impl ICtxOut for CtxOut<'_> {}
+impl ICtxOut for CtxOut {}
 
 pub enum GpuPipeline {
     Render(wgpu::RenderPipeline),
     Compute(wgpu::ComputePipeline),
 }
 
-pub struct Gpu<'a, T>
+pub struct Gpu
 where
-    T: Displayable<'a>,
 {
-    pub(crate) surface: wgpu::Surface<'a>,
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
     pub(crate) config: RwLock<wgpu::SurfaceConfiguration>,
-    pub window: Arc<T>,
-    node_id: [u8; 6],
-    render_ctxs: RwLock<BTreeMap<CommandListIndex, RenderCtx<'a>>>,
-    static_cmds: RwLock<BTreeMap<CommandListIndex, wgpu::RenderBundle>>,
     pub(crate) buffers: RwLock<HashMap<BufferId, wgpu::Buffer>>,
+    pub(crate) pipeline_db: RwLock<PipelineDB>,
+
+    node_id: [u8; 6],
+    render_ctxs: RwLock<BTreeMap<CommandListIndex, RenderCtx>>,
+    static_cmds: RwLock<BTreeMap<CommandListIndex, wgpu::RenderBundle>>,
     depth_texture: RwLock<Texture>,
 }
 
-impl<'a, T: Displayable<'a> + 'a> Gpu<'a, T> {
-    pub async fn new(window: Arc<T>, width: u32, height: u32) -> Arc<Self> {
+impl Gpu {
+    
+    pub async fn new<T: IDisplayable + 'static>(window: Arc<T>, width: u32, height: u32) -> Arc<Self> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             ..Default::default()
         });
 
+        let window = WINDOW.get_or_init(|| window);
+
         let surface = instance.create_surface(Arc::clone(&window)).unwrap();
+
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -154,16 +169,19 @@ impl<'a, T: Displayable<'a> + 'a> Gpu<'a, T> {
 
         buffers.insert(DEFAULT_CAMERA_BUFFER_ID, camera_buffer);
 
+        let pipeline_db = PipelineDB::new(&device, &config);
+
+        SURFACE.get_or_init(|| surface);
+
         Arc::new(Self {
-            surface,
             device,
             queue,
             config: RwLock::new(config),
-            window,
             node_id: rand::thread_rng().gen::<[u8; 6]>(),
             render_ctxs: RwLock::new(BTreeMap::new()),
             static_cmds: RwLock::new(BTreeMap::new()),
             buffers: RwLock::new(buffers),
+            pipeline_db: RwLock::new(pipeline_db),
             depth_texture,
         })
     }
@@ -183,12 +201,10 @@ impl<'a, T: Displayable<'a> + 'a> Gpu<'a, T> {
     }
 }
 
-impl<'a,T> IGpu for Gpu<'a, T>
-where
-    T: Displayable<'a> + 'a,
+impl IGpu for Gpu
 {
     type Err = GpuError;
-    type CtxOut = CtxOut<'a>;
+    type CtxOut = CtxOut;
     type Pipeline = GpuPipeline;
 
     fn create_buffer(&self) -> BufferId {
@@ -216,21 +232,15 @@ where
             &mut *depth_tex,
             Texture::create_depth_texture(&self.device, &config_write, "Depth Texture"),
         );
-        self.surface.configure(&self.device, &config_write);
+        SURFACE.get().unwrap().configure(&self.device, &config_write);
     }
 
     fn submit_ctx_out(&self, out: Self::CtxOut) {
-        let mut render_ctxs_write = self.render_ctxs.write().unwrap();
-        match out {
-            CtxOut::Render(ctx) => {
-                render_ctxs_write.insert(CommandListIndex::new(&self.node_id), ctx);
-            }
-            CtxOut::Update(ctx) => self.update_buffers(ctx),
-        };
+        todo!()
     }
 
     fn present(&self) -> Result<(), Self::Err> {
-        let surface_tex = self.surface.get_current_texture()?;
+        let surface_tex = SURFACE.get().unwrap().get_current_texture()?;
         let view = surface_tex
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -315,17 +325,27 @@ where
 
         let bundle_render_cmd = std::iter::once(cmd_encoder.finish());
 
-        let mut cmds_write = self.render_ctxs.write().unwrap();
+        let mut contexts_write = self.render_ctxs.write().unwrap();
 
-        let cmds_map = std::mem::take(&mut *cmds_write);
+        let cmds_map = std::mem::take(&mut *contexts_write);
+
+        let ids = cmds_map.into_iter().map(|(_, ctx)| ctx.id);
+
+        todo!();
+
+        let mut render_ctxs = std::mem::take(&mut *render_ctxs_write);
+
+        let cmds_map: Vec<_> = ids.map(|id| render_ctxs.remove(&id).unwrap()).collect();
+
+        let pipeline_db_read = self.pipeline_db.read().unwrap();
 
         let cmds: Vec<_> = cmds_map
             .into_par_iter()
-            .map(|(_, ctx)| {
-                let RenderCtx {
-                    bind_groups,
+            .map(|ctx| {
+                let RenderCmd {
                     vertex_buffer,
                     index_buffer,
+                    bind_groups,
                     pipeline,
                     draw_cmd,
                     ..
@@ -366,7 +386,14 @@ where
                     });
 
                     if let Some(pipeline) = pipeline {
-                        rpass.set_pipeline(pipeline)
+                        let pipeline = match pipeline_db_read.pipelines.get(&pipeline) {
+                            Some(pipeline) => pipeline,
+                            None => pipeline_db_read.get_default(),
+                        };
+
+                        if let GpuPipeline::Render(pipeline) = pipeline {
+                            rpass.set_pipeline(pipeline);
+                        }
                     }
                     if let Some((slot, vertex_buf)) = vertex_buffer {
                         rpass.set_vertex_buffer(slot, vertex_buf.slice(..))

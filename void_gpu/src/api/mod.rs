@@ -25,31 +25,23 @@ pub trait IPipeline {}
 
 pub trait ICtxOut: Send + Sync {}
 
-pub trait IContext
-where
-{
+pub trait IContext {
     type Out;
-    fn new() -> Self;
     fn finish(self) -> Self::Out;
 }
 
-pub trait IRenderContext<'a>: IContext + DrawModel<'a>
-where
-{
+pub trait IRenderContext<'a>: IContext + DrawModel<'a> {
     type Buffer: IBuffer;
-    type Pipeline: IPipeline;
     type BindGroup: IBindGroup;
 
-    fn set_pipeline(&mut self, pipeline: &'a Self::Pipeline);
+    fn set_pipeline(&mut self, pipeline: PipelineId);
     fn set_bind_group(&mut self, slot: u32, bind_group: &'a Self::BindGroup);
     fn set_vertex_buffer(&mut self, slot: u32, buffer: &'a Self::Buffer);
     fn set_index_buffer(&mut self, slot: u32, buffer: &'a Self::Buffer);
     fn draw(&mut self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>);
 }
 
-pub trait IUploadContext<'a>: IContext + UpdateCamera<'a>
-where
-{
+pub trait IUploadContext<'a>: IContext + UpdateCamera<'a> {
     fn upload_buffer(&mut self, buffer_id: BufferId, data: &'a [u8]);
 }
 
@@ -93,9 +85,7 @@ pub trait IGpu {
     fn present(&self) -> Result<(), Self::Err>;
 }
 
-pub trait DrawModel<'b>
-where
-{
+pub trait DrawModel<'b> {
     type Camera: ICamera;
     fn draw_mesh(
         &mut self,
