@@ -1,19 +1,16 @@
 use std::sync::Arc;
 
 use void_core::crossbeam_queue::ArrayQueue;
-use void_gpu::{
-    api::{Displayable, Gpu},
-    model::Model,
-};
+use void_gpu::{api::Gpu, model::Model};
 use void_window::event::*;
 
-pub struct IoEngine<'a, T: Displayable<'a>> {
-    gpu: Arc<Gpu<'a, T>>,
+pub struct IoEngine {
+    gpu: Arc<Gpu>,
     model_queue: Arc<ArrayQueue<Model>>,
 }
 
-impl<'a, T: Displayable<'a>> IoEngine<'a, T> {
-    pub fn new(gpu: Arc<Gpu<'a, T>>, model_queue: Arc<ArrayQueue<Model>>) -> Self {
+impl IoEngine {
+    pub fn new(gpu: Arc<Gpu>, model_queue: Arc<ArrayQueue<Model>>) -> Self {
         Self { gpu, model_queue }
     }
 

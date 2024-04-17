@@ -3,10 +3,11 @@ use std::ops::Range;
 
 use uuid::Uuid;
 
-use void_core::rayon::iter::ParallelIterator;
+use void_core::{rayon::iter::ParallelIterator, IBuilder};
 use wgpu_api::model::{Material, Mesh, Model};
 pub use wgpu_api::{
-    api::*, camera, pipeline::PipelineBuilder, texture::Texture, texture::TextureError, Displayable,
+    api::*, camera, pipeline::PipelineBuilder, texture::Texture, texture::TextureError,
+    IDisplayable,
 };
 
 use crate::camera::{ICamera, UpdateCamera};
@@ -31,13 +32,10 @@ pub trait IContext {
 }
 
 pub trait IRenderContext<'a>: IContext + DrawModel<'a> {
-    type Buffer: IBuffer;
-    type BindGroup: IBindGroup;
-
     fn set_pipeline(&mut self, pipeline: PipelineId);
-    fn set_bind_group(&mut self, slot: u32, bind_group: &'a Self::BindGroup);
-    fn set_vertex_buffer(&mut self, slot: u32, buffer: &'a Self::Buffer);
-    fn set_index_buffer(&mut self, slot: u32, buffer: &'a Self::Buffer);
+    fn set_bind_group(&mut self, slot: u32, bind_group: usize);
+    fn set_vertex_buffer(&mut self, slot: u32, buffer: BufferId);
+    fn set_index_buffer(&mut self, slot: u32, buffer: BufferId);
     fn draw(&mut self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>);
 }
 
@@ -69,7 +67,6 @@ pub struct PipelineId(Uuid);
 pub trait IGpu {
     type Err: std::error::Error;
     type CtxOut: ICtxOut;
-    type Pipeline;
 
     fn submit_ctx_out(&self, out: Self::CtxOut);
     fn submit_ctx_bundled(&self, outs: impl ParallelIterator<Item = Self::CtxOut>)

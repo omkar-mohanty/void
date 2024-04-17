@@ -1,7 +1,4 @@
-use std::{
-    cell::OnceCell,
-    sync::{Arc, OnceLock},
-};
+use std::sync::{Arc, OnceLock};
 
 use void_core::IBuilder;
 
@@ -12,7 +9,8 @@ use crate::{
 
 impl IPipeline for wgpu::RenderPipeline {}
 
-use super::Displayable;
+pub(crate) static CAMERA_BIND_GROUP_LAYOUT: OnceLock<wgpu::BindGroupLayout> = OnceLock::new();
+pub(crate) static TEXTURE_BIND_GROUP_LAYOUT: OnceLock<wgpu::BindGroupLayout> = OnceLock::new();
 
 /// Compute shader entry point name
 static COMPUTE_ENTRY: &'static str = "cs_main";
@@ -64,15 +62,15 @@ pub(crate) static CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR: wgpu::BindGroupLayoutDesc
         label: Some("camera_bind_group_layout"),
     };
 
-pub struct PipelineBuilder<'a, T: Displayable<'a>> {
-    gpu: Arc<Gpu<'a, T>>,
-    shader_src: Option<&'a str>,
+pub struct PipelineBuilder<'a> {
+    gpu: Arc<Gpu>,
+    shader_src: Option<String>,
     bind_group_layout_descriptros: Option<Vec<wgpu::BindGroupLayoutDescriptor<'a>>>,
     pipeline_type: PipelineType,
 }
 
-impl<'a, T: Displayable<'a>> PipelineBuilder<'a, T> {
-    pub fn new(gpu: Arc<Gpu<'a, T>>, pipeline_type: PipelineType) -> Self {
+impl<'a> PipelineBuilder<'a> {
+    pub fn new(gpu: Arc<Gpu>, pipeline_type: PipelineType) -> Self {
         Self {
             gpu,
             shader_src: None,
@@ -98,7 +96,7 @@ impl<'a, T: Displayable<'a>> PipelineBuilder<'a, T> {
     }
 }
 
-impl<'a, T: Displayable<'a>> IBuilder for PipelineBuilder<'a, T> {
+impl<'a> IBuilder for PipelineBuilder<'a> {
     type Output = GpuPipeline;
 
     async fn build(self) -> void_core::Result<Self::Output, void_core::BuilderError> {
@@ -170,7 +168,7 @@ pub(crate) fn default_render_pipeline(
         &CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR,
     ];
 
-    let bind_group_layouts: Vec<_> = layout_descriptors
+    let mut bind_group_layouts: Vec<_> = layout_descriptors
         .into_iter()
         .map(|descriptor| device.create_bind_group_layout(descriptor))
         .collect();
@@ -196,6 +194,9 @@ pub(crate) fn default_render_pipeline(
         wgpu::PrimitiveTopology::TriangleList,
         shader,
     );
+
+    TEXTURE_BIND_GROUP_LAYOUT.get_or_init(|| bind_group_layouts.remove(0));
+    CAMERA_BIND_GROUP_LAYOUT.get_or_init(|| bind_group_layouts.remove(1));
 
     GpuPipeline::Render(pipeline)
 }
@@ -258,8 +259,8 @@ fn create_render_pipeline(
     })
 }
 
-fn create_compute_pipeline<'a, T: Displayable<'a>>(
-    device: &Gpu<'a, T>,
+fn create_compute_pipeline(
+    device: &Gpu,
     layout: &wgpu::PipelineLayout,
     shader: wgpu::ShaderModuleDescriptor,
 ) -> wgpu::ComputePipeline {

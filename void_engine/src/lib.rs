@@ -13,15 +13,15 @@ use void_window::{
     Window,
 };
 
-pub struct App<'a> {
-    pub gpu: Arc<Gpu<'a, Window>>,
-    pub render_engine: RendererEngine<'a, Window>,
+pub struct App {
+    pub gpu: Arc<Gpu>,
+    pub render_engine: RendererEngine,
     pub thread_pool: Arc<ThreadPool>,
     pub model_queue: Arc<ArrayQueue<Model>>,
-    pub io_engine: IoEngine<'a, Window>,
+    pub io_engine: IoEngine,
 }
 
-impl<'a> App<'a> {
+impl App {
     pub async fn run(mut self, event_loop: EventLoop<()>) -> Result<(), SystemError<()>>
 where {
         event_loop
@@ -29,22 +29,18 @@ where {
                 self.check_resources();
 
                 match &event {
-                    Event::WindowEvent { window_id, event }
-                        if *window_id == self.gpu.window.id() =>
-                    {
-                        match &event {
-                            WindowEvent::CloseRequested => ewlt.exit(),
-                            WindowEvent::Resized(physical_size) => {
-                                self.gpu
-                                    .window_update(physical_size.width, physical_size.height);
-                            }
-                            WindowEvent::RedrawRequested => {
-                                self.render_engine.render();
-                                self.gpu.window.request_redraw();
-                            }
-                            _ => {}
+                    Event::WindowEvent { event, .. } => match &event {
+                        WindowEvent::CloseRequested => ewlt.exit(),
+                        WindowEvent::Resized(physical_size) => {
+                            self.gpu
+                                .window_update(physical_size.width, physical_size.height);
                         }
-                    }
+                        WindowEvent::RedrawRequested => {
+                            self.render_engine.render();
+                            self.gpu.window.request_redraw();
+                        }
+                        _ => {}
+                    },
                     _ => {}
                 };
                 self.io_engine.run(event);

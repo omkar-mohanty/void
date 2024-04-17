@@ -7,18 +7,15 @@ pub(crate) mod texture;
 use crate::model::{ModelVertex, Vertex};
 use wgpu::{
     rwh::{HasDisplayHandle, HasWindowHandle},
-    SurfaceTarget, SurfaceTargetUnsafe,
+    SurfaceTarget,
 };
 
-pub trait IDisplayable: Sync + Send + HasDisplayHandle + HasWindowHandle{
+pub trait IDisplayable: Sync + Send + HasDisplayHandle + HasWindowHandle {
     fn get_inner(&self) -> wgpu::SurfaceTarget {
         SurfaceTarget::Window(Box::new(self))
     }
-}
 
-pub trait Displayable<'a>:
-    Sync + Send + HasDisplayHandle + HasWindowHandle + Into<SurfaceTarget<'a>>
-{
+    fn request_redraw(&self);
 }
 
 impl Vertex<wgpu::VertexBufferLayout<'static>> for ModelVertex {

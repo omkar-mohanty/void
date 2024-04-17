@@ -1,7 +1,10 @@
 use std::ops::Deref;
+use void_gpu::api::IDisplayable;
 
-use void_gpu::api::Displayable;
-use wgpu::{rwh::{HasDisplayHandle, HasWindowHandle}, SurfaceTarget};
+use wgpu::{
+    rwh::{HasDisplayHandle, HasWindowHandle},
+    SurfaceTarget,
+};
 
 pub use winit::*;
 
@@ -27,12 +30,8 @@ impl Deref for Window {
     }
 }
 
-impl Into<SurfaceTarget> for Window {
-    fn into(self) -> SurfaceTarget {
-        SurfaceTarget::Window(window)
+impl IDisplayable for Window {
+    fn request_redraw(&self) {
+        self.0.request_redraw();
     }
-}
-
-impl<'a> Displayable<'a> for Window {
-    // add code here
 }

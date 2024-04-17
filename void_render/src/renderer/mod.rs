@@ -1,21 +1,21 @@
 use std::sync::Arc;
 use void_core::db::IDb;
 use void_gpu::{
-    api::{render_ctx::RenderCtx, Displayable, DrawModel, Gpu, IContext, IGpu},
+    api::{render_ctx::RenderCtx, DrawModel, Gpu, IContext, IGpu},
     camera::{Camera, CameraUniform},
     model::*,
 };
 
-pub struct RendererEngine<'a, T: Displayable<'a>> {
-    gpu: Arc<Gpu<'a, T>>,
+pub struct RendererEngine {
+    gpu: Arc<Gpu>,
     camera: Camera,
     camera_uniform: CameraUniform,
     model_db: ModelDB,
 }
 
-impl<'a, T: Displayable<'a> + 'a> RendererEngine<'a, T> {
-    pub fn new(gpu: Arc<Gpu<'a, T>>, aspect: f32) -> Self {
-        let camera = Camera::new(aspect, Arc::clone(&gpu));
+impl RendererEngine {
+    pub fn new(gpu: Arc<Gpu>, aspect: f32) -> Self {
+        let camera = Camera::new(aspect);
         Self {
             gpu,
             camera,
@@ -29,11 +29,11 @@ impl<'a, T: Displayable<'a> + 'a> RendererEngine<'a, T> {
     }
 
     pub fn render(&self) {
-        let outs: Vec<_> = self
+        let _outs: Vec<_> = self
             .model_db
             .iter()
             .map(|(_, model)| {
-                let mut ctx = RenderCtx::new(Arc::clone(&self.gpu));
+                let mut ctx = RenderCtx::new();
                 ctx.draw_model(model, &self.camera);
                 let out = ctx.finish();
                 self.gpu.submit_ctx_out(out);

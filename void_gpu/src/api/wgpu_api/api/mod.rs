@@ -1,17 +1,23 @@
 use render_ctx::{DrawCmd, RenderCtx};
-use wgpu::{core::instance, util::DeviceExt};
+use wgpu::util::DeviceExt;
 
 use self::upload_ctx::UploadCtx;
 
 use super::{
-    pipeline::default_render_pipeline,
+    pipeline::{default_render_pipeline, CAMERA_BIND_GROUP_LAYOUT},
     texture::{Texture, TextureError},
     IDisplayable,
 };
-use crate::api::{BufferId, CommandListIndex, Displayable, IBuffer, ICtxOut, IGpu, PipelineId};
+use crate::{
+    api::{BufferId, CommandListIndex, IBuffer, ICtxOut, IGpu, IPipeline, PipelineBuilder, PipelineId},
+    camera::CameraUniform,
+};
 use rand::Rng;
 use std::{
-    cell::OnceCell, collections::{BTreeMap, HashMap}, ops::Deref, sync::{Arc, OnceLock, RwLock, RwLockWriteGuard}
+    collections::{BTreeMap, HashMap},
+    str::FromStr,
+    sync::{Arc, OnceLock, RwLock},
+    usize,
 };
 use thiserror::Error;
 use uuid::{uuid, Uuid};
@@ -22,89 +28,124 @@ pub mod upload_ctx;
 
 impl IBuffer for wgpu::Buffer {}
 
+static DEFAULT_PIPELINE_ID: PipelineId = PipelineId(uuid!("36408a0a-57d7-40af-b476-ab1aa5a77ac7"));
+
 pub(crate) static DEFAULT_CAMERA_BUFFER_ID: BufferId =
-    BufferId(uuid!("5b929ea6-7547-4e70-89a0-6f9ad7f9ffe4"));
+    BufferId(uuid!("059089eb-c098-4fc5-b67a-cd24db18f6f6"));
+
+pub(crate) const DEFAULT_CAMERA_BIND_GROUP_IDX: usize = 1;
 
 pub(crate) static SURFACE: OnceLock<wgpu::Surface> = OnceLock::new();
 pub(crate) static WINDOW: OnceLock<Arc<dyn IDisplayable>> = OnceLock::new();
 pub(crate) static CONTEXTS: OnceLock<ContextManager> = OnceLock::new();
 
+pub(crate) static GPU_RESOURCE: OnceLock<GpuResource> = OnceLock::new();
+
 #[derive(Default)]
-pub struct RenderCmd<'a> {
-    pub(crate) bind_groups: Vec<(u32, &'a wgpu::BindGroup, &'a [wgpu::DynamicOffset])>,
-    pub(crate) vertex_buffer: Option<(u32, &'a wgpu::Buffer)>,
-    pub(crate) index_buffer: Option<&'a wgpu::Buffer>,
+pub struct RenderCmd {
+    pub(crate) bind_groups: Vec<(u32, usize)>,
+    pub(crate) vertex_buffer: Option<(u32, BufferId)>,
+    pub(crate) index_buffer: Option<BufferId>,
     pub(crate) pipeline: Option<PipelineId>,
     pub(crate) draw_cmd: Option<DrawCmd>,
 }
 
 #[derive(Default)]
-pub struct ContextManager<'a> {
-    pub(crate) render_ctxs: RwLock<HashMap<Uuid, RenderCmd<'a>>>,
+pub struct BufferManager {
+    buffers: HashMap<BufferId, wgpu::Buffer>,
 }
 
-pub struct PipelineDB {
-    pub(crate) pipelines: HashMap<PipelineId, GpuPipeline>,
-    default_pipeline_id: PipelineId,
+impl BufferManager {
+    pub(crate) fn add_buffer(contents: wgpu::Buffer) -> BufferId {
+        ContextManager::record(move |ctx_manager| {
+            let mut buffer_mgr = ctx_manager.buffer_manager.write().unwrap();
+            let id = BufferId(Uuid::new_v4());
+            buffer_mgr.buffers.insert(id, contents);
+            id
+        })
+    }
 }
 
-impl PipelineDB {
-    pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
-        let mut pipelines = HashMap::new();
-        let pipeline = default_render_pipeline(device, config);
-        let default_pipeline_id = PipelineId(Uuid::new_v4());
+#[derive(Default)]
+pub struct ContextManager {
+    pub(crate) render_ctxs: RwLock<HashMap<Uuid, RenderCmd>>,
+    pub(crate) buffer_manager: RwLock<BufferManager>,
+    pub(crate) pipeline_db: PipelineDB,
+}
 
-        pipelines.insert(default_pipeline_id, pipeline);
+impl ContextManager {
+    fn init() {
+        let contexts = CONTEXTS.get_or_init(|| ContextManager::default());
+        let mut buf_mgr = contexts.buffer_manager.write().unwrap();
 
-        Self {
-            pipelines,
-            default_pipeline_id,
+        let resource = GPU_RESOURCE.get().unwrap();
+        let default_pipeline =
+            default_render_pipeline(&resource.device, &resource.config.read().unwrap());
+        let mut pipelines_db = contexts.pipeline_db.pipelines.write().unwrap();
+
+        let camera_buffer = resource
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(""),
+                contents: bytemuck::cast_slice(&[CameraUniform::new()]),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
+
+        let bind_groups = vec![resource
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Camera Bind Group"),
+                layout: &CAMERA_BIND_GROUP_LAYOUT.get().unwrap(),
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: camera_buffer.as_entire_binding(),
+                }],
+            })];
+
+        buf_mgr
+            .buffers
+            .insert(DEFAULT_CAMERA_BUFFER_ID, camera_buffer);
+
+        pipelines_db.insert(
+            DEFAULT_PIPELINE_ID,
+            PipelineEntry {
+                pipeline: default_pipeline,
+                source: String::from_str(include_str!("../shader.wgsl")).unwrap(),
+                bind_groups,
+            },
+        );
+    }
+    fn record<T, F: FnOnce(&Self) -> T>(func: F) -> T {
+        if let None = CONTEXTS.get() {
+            Self::init();
         }
-    }
-
-    pub fn get_default(&self) -> &GpuPipeline {
-        self.pipelines.get(&self.default_pipeline_id).unwrap()
+        let ctxs = CONTEXTS.get().unwrap();
+        func(ctxs)
     }
 }
 
-pub enum CtxOut {
-    Render(RenderCtx),
+struct PipelineEntry {
+    pipeline: GpuPipeline,
+    source: String,
+    bind_groups: Vec<wgpu::BindGroup>,
 }
 
-impl ICtxOut for CtxOut {}
-
-pub enum GpuPipeline {
-    Render(wgpu::RenderPipeline),
-    Compute(wgpu::ComputePipeline),
+struct GpuResource {
+    window: Arc<dyn IDisplayable>,
+    surface: RwLock<wgpu::Surface<'static>>,
+    config: RwLock<wgpu::SurfaceConfiguration>,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
 }
 
-pub struct Gpu
-where
-{
-    pub(crate) device: wgpu::Device,
-    pub(crate) queue: wgpu::Queue,
-    pub(crate) config: RwLock<wgpu::SurfaceConfiguration>,
-    pub(crate) buffers: RwLock<HashMap<BufferId, wgpu::Buffer>>,
-    pub(crate) pipeline_db: RwLock<PipelineDB>,
-
-    node_id: [u8; 6],
-    render_ctxs: RwLock<BTreeMap<CommandListIndex, RenderCtx>>,
-    static_cmds: RwLock<BTreeMap<CommandListIndex, wgpu::RenderBundle>>,
-    depth_texture: RwLock<Texture>,
-}
-
-impl Gpu {
-    
-    pub async fn new<T: IDisplayable + 'static>(window: Arc<T>, width: u32, height: u32) -> Arc<Self> {
+impl GpuResource {
+    pub async fn init<T: IDisplayable + 'static>(window: Arc<T>, width: u32, height: u32) {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             ..Default::default()
         });
 
-        let window = WINDOW.get_or_init(|| window);
-
         let surface = instance.create_surface(Arc::clone(&window)).unwrap();
-
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -153,12 +194,6 @@ impl Gpu {
 
         surface.configure(&device, &config);
 
-        let depth_texture = RwLock::new(Texture::create_depth_texture(
-            &device,
-            &config,
-            "Depth Texture",
-        ));
-
         let mut buffers = HashMap::new();
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -169,261 +204,120 @@ impl Gpu {
 
         buffers.insert(DEFAULT_CAMERA_BUFFER_ID, camera_buffer);
 
-        let pipeline_db = PipelineDB::new(&device, &config);
+        let res = Self {
+            window,
+            surface: RwLock::new(surface),
+            queue,
+            device,
+            config: RwLock::new(config),
+        };
 
-        SURFACE.get_or_init(|| surface);
+        GPU_RESOURCE.get_or_init(|| res);
+    }
+}
+
+#[derive(Default)]
+pub struct PipelineDB {
+    pub(crate) pipelines: RwLock<HashMap<PipelineId, PipelineEntry>>,
+}
+
+pub enum CtxOut {
+    Render(RenderCtx),
+}
+
+impl ICtxOut for CtxOut {}
+
+pub enum GpuPipeline {
+    Render(wgpu::RenderPipeline),
+    Compute(wgpu::ComputePipeline),
+}
+
+impl IPipeline for GpuPipeline {
+    
+}
+
+pub struct Gpu {
+    node_id: [u8; 6],
+    render_ctxs: RwLock<BTreeMap<CommandListIndex, RenderCtx>>,
+    static_cmds: RwLock<BTreeMap<CommandListIndex, wgpu::RenderBundle>>,
+    depth_texture: RwLock<Texture>,
+}
+
+impl Gpu {
+    async fn init<T: IDisplayable + 'static>(window: Arc<T>, width: u32, height: u32) {
+        GpuResource::init(window, width, height).await;
+        ContextManager::init();
+    }
+    pub async fn new<T: IDisplayable + 'static>(
+        window: Arc<T>,
+        width: u32,
+        height: u32,
+    ) -> Arc<Self> {
+        Self::init(window, width, height);
+
+        let resource = GPU_RESOURCE.get().unwrap();
+
+        let depth_texture = RwLock::new(Texture::create_depth_texture(
+            &resource.device,
+            &resource.config.read().unwrap(),
+            "Depth Texture",
+        ));
 
         Arc::new(Self {
-            device,
-            queue,
-            config: RwLock::new(config),
             node_id: rand::thread_rng().gen::<[u8; 6]>(),
             render_ctxs: RwLock::new(BTreeMap::new()),
             static_cmds: RwLock::new(BTreeMap::new()),
-            buffers: RwLock::new(buffers),
-            pipeline_db: RwLock::new(pipeline_db),
             depth_texture,
         })
     }
 
     fn update_buffers(&self, ctx: UploadCtx) {
-        let UploadCtx {
-            buffer_id, data, ..
-        } = ctx;
-
-        let buffers_read = self.buffers.read().unwrap();
-
-        if let Some(id) = buffer_id {
-            if let Some(buffer) = buffers_read.get(&id) {
-                self.queue.write_buffer(buffer, 0, data.unwrap_or(&[]));
-            }
-        }
+        todo!()
     }
 }
 
-impl IGpu for Gpu
-{
+impl IGpu for Gpu {
     type Err = GpuError;
     type CtxOut = CtxOut;
-    type Pipeline = GpuPipeline;
 
     fn create_buffer(&self) -> BufferId {
-        let mut buffers = self.buffers.write().unwrap();
-        let buffer_desc = wgpu::util::BufferInitDescriptor {
-            label: Some("Uniform Buffer"),
-            usage: wgpu::BufferUsages::UNIFORM,
-            contents: &[],
-        };
-        let buffer = self.device.create_buffer_init(&buffer_desc);
-        let id = BufferId(Uuid::new_v4());
-        buffers.insert(id, buffer);
-        id
+        todo!()
     }
 
     fn window_update(&self, width: u32, height: u32) {
         if width <= 0 || height <= 0 {
             return;
         }
-        let mut config_write = self.config.write().unwrap();
+
+        let resource = GPU_RESOURCE.get().unwrap();
+        let device = &resource.device;
+        let mut config = resource.config.write().unwrap();
+        let surface = resource.surface.read().unwrap();
+
         let mut depth_tex = self.depth_texture.write().unwrap();
-        config_write.width = width;
-        config_write.height = height;
+
+        config.width = width;
+        config.height = height;
+
         let _ = std::mem::replace(
             &mut *depth_tex,
-            Texture::create_depth_texture(&self.device, &config_write, "Depth Texture"),
+            Texture::create_depth_texture(device, &config, "Depth Texture"),
         );
-        SURFACE.get().unwrap().configure(&self.device, &config_write);
+
+        surface.configure(device, &config);
     }
 
     fn submit_ctx_out(&self, out: Self::CtxOut) {
-        todo!()
+        match out {
+            CtxOut::Render(ctx) => {
+                let mut ctxs = self.render_ctxs.write().unwrap();
+                ctxs.insert(CommandListIndex::new(&self.node_id), ctx);
+            }
+        }
     }
 
     fn present(&self) -> Result<(), Self::Err> {
-        let surface_tex = SURFACE.get().unwrap().get_current_texture()?;
-        let view = surface_tex
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-
-        let depth_tex_read = &self.depth_texture.read().unwrap();
-        let depth_view = &depth_tex_read.view;
-        let bundles_read = self.static_cmds.read().unwrap();
-        let bundles = bundles_read.iter().map(|(_idx, bundle)| bundle);
-
-        let mut cmd_encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Cmd Encoder"),
-            });
-
-        {
-            let _rpass = cmd_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Static Object Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: depth_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-        }
-
-        let clearc_cmd = std::iter::once(cmd_encoder.finish());
-
-        let mut cmd_encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Cmd Encoder"),
-            });
-
-        {
-            let mut rpass = cmd_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Static Object Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: depth_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-            rpass.execute_bundles(bundles);
-        }
-
-        let bundle_render_cmd = std::iter::once(cmd_encoder.finish());
-
-        let mut contexts_write = self.render_ctxs.write().unwrap();
-
-        let cmds_map = std::mem::take(&mut *contexts_write);
-
-        let ids = cmds_map.into_iter().map(|(_, ctx)| ctx.id);
-
         todo!();
-
-        let mut render_ctxs = std::mem::take(&mut *render_ctxs_write);
-
-        let cmds_map: Vec<_> = ids.map(|id| render_ctxs.remove(&id).unwrap()).collect();
-
-        let pipeline_db_read = self.pipeline_db.read().unwrap();
-
-        let cmds: Vec<_> = cmds_map
-            .into_par_iter()
-            .map(|ctx| {
-                let RenderCmd {
-                    vertex_buffer,
-                    index_buffer,
-                    bind_groups,
-                    pipeline,
-                    draw_cmd,
-                    ..
-                } = ctx;
-
-                let mut cmd_encoder =
-                    self.device
-                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                            label: Some("Cmd Encoder"),
-                        });
-
-                {
-                    let mut rpass = cmd_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("Static Object Render Pass"),
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(wgpu::Color {
-                                    r: 0.1,
-                                    g: 0.2,
-                                    b: 0.3,
-                                    a: 1.0,
-                                }),
-                                store: wgpu::StoreOp::Store,
-                            },
-                        })],
-                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                            view: depth_view,
-                            depth_ops: Some(wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(1.0),
-                                store: wgpu::StoreOp::Store,
-                            }),
-                            stencil_ops: None,
-                        }),
-                        timestamp_writes: None,
-                        occlusion_query_set: None,
-                    });
-
-                    if let Some(pipeline) = pipeline {
-                        let pipeline = match pipeline_db_read.pipelines.get(&pipeline) {
-                            Some(pipeline) => pipeline,
-                            None => pipeline_db_read.get_default(),
-                        };
-
-                        if let GpuPipeline::Render(pipeline) = pipeline {
-                            rpass.set_pipeline(pipeline);
-                        }
-                    }
-                    if let Some((slot, vertex_buf)) = vertex_buffer {
-                        rpass.set_vertex_buffer(slot, vertex_buf.slice(..))
-                    }
-
-                    for (slot, bind_group, offsets) in bind_groups {
-                        rpass.set_bind_group(slot, bind_group, offsets)
-                    }
-
-                    if let Some(index_buf) = index_buffer {
-                        rpass.set_index_buffer(index_buf.slice(..), wgpu::IndexFormat::Uint16)
-                    }
-
-                    if let Some(draw) = draw_cmd {
-                        let DrawCmd {
-                            indices,
-                            base_vertex,
-                            instances,
-                        } = draw;
-                        rpass.draw_indexed(indices, base_vertex, instances);
-                    }
-                }
-                cmd_encoder.finish()
-            })
-            .collect();
-
-        self.queue
-            .submit(clearc_cmd.chain(bundle_render_cmd).chain(cmds));
-        surface_tex.present();
-
         Ok(())
     }
 }

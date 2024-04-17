@@ -1,5 +1,5 @@
 use crate::{
-    api::{Displayable, Gpu, Texture, TextureError},
+    api::{BufferManager, Gpu, Texture, TextureError},
     model,
 };
 use std::{
@@ -23,10 +23,7 @@ fn format_url(file_name: &str) -> reqwest::Url {
     base.join(file_name).unwrap()
 }
 
-pub fn load_texture<'a, T: Displayable<'a>>(
-    file_name: &PathBuf,
-    gpu: &Gpu<'a, T>,
-) -> Result<Texture, IoError> {
+pub fn load_texture(file_name: &PathBuf, gpu: &Gpu) -> Result<Texture, IoError> {
     let device = &gpu.device;
     let queue = &gpu.queue;
     let data = std::fs::read(file_name)?;
@@ -38,10 +35,7 @@ pub fn load_texture<'a, T: Displayable<'a>>(
     )?)
 }
 
-pub fn load_model<'a, T: Displayable<'a>>(
-    file_path: &PathBuf,
-    gpu: &Gpu<'a, T>,
-) -> Result<model::Model, IoError> {
+pub fn load_model(file_path: &PathBuf, gpu: &Gpu) -> Result<model::Model, IoError> {
     let device = &gpu.device;
     let obj_text = fs::read_to_string(file_path)?;
     let obj_cursor = Cursor::new(obj_text);
@@ -143,6 +137,9 @@ pub fn load_model<'a, T: Displayable<'a>>(
                 contents: bytemuck::cast_slice(&m.mesh.indices),
                 usage: wgpu::BufferUsages::INDEX,
             });
+
+            let vertex_buffer = BufferManager::add_buffer(vertex_buffer);
+            let index_buffer = BufferManager::add_buffer(index_buffer);
 
             model::Mesh {
                 name: file_path.display().to_string(),
