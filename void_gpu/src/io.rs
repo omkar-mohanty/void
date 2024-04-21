@@ -5,6 +5,7 @@ use crate::{
 use std::{
     fs,
     io::{BufReader, Cursor},
+    ops::Deref,
     path::PathBuf,
 };
 use thiserror::Error;
@@ -24,8 +25,9 @@ fn format_url(file_name: &str) -> reqwest::Url {
 }
 
 pub fn load_texture(file_name: &PathBuf, gpu: &Gpu) -> Result<Texture, IoError> {
-    let device = &gpu.device;
-    let queue = &gpu.queue;
+    let resource = gpu.get_resource();
+    let device = &resource.device;
+    let queue = &resource.queue;
     let data = std::fs::read(file_name)?;
     Ok(Texture::from_bytes(
         device,
@@ -36,7 +38,8 @@ pub fn load_texture(file_name: &PathBuf, gpu: &Gpu) -> Result<Texture, IoError> 
 }
 
 pub fn load_model(file_path: &PathBuf, gpu: &Gpu) -> Result<model::Model, IoError> {
-    let device = &gpu.device;
+    let resource = gpu.get_resource();
+    let device = &resource.device;
     let obj_text = fs::read_to_string(file_path)?;
     let obj_cursor = Cursor::new(obj_text);
     let mut obj_reader = BufReader::new(obj_cursor);

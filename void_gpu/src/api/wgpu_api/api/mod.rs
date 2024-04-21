@@ -9,12 +9,15 @@ use super::{
     IDisplayable,
 };
 use crate::{
-    api::{BufferId, CommandListIndex, IBuffer, ICtxOut, IGpu, IPipeline, PipelineBuilder, PipelineId},
+    api::{
+        BufferId, CommandListIndex, IBuffer, ICtxOut, IGpu, IPipeline, PipelineBuilder, PipelineId,
+    },
     camera::CameraUniform,
 };
 use rand::Rng;
 use std::{
     collections::{BTreeMap, HashMap},
+    ops::Deref,
     str::FromStr,
     sync::{Arc, OnceLock, RwLock},
     usize,
@@ -35,9 +38,9 @@ pub(crate) static DEFAULT_CAMERA_BUFFER_ID: BufferId =
 
 pub(crate) const DEFAULT_CAMERA_BIND_GROUP_IDX: usize = 1;
 
-pub(crate) static SURFACE: OnceLock<wgpu::Surface> = OnceLock::new();
-pub(crate) static WINDOW: OnceLock<Arc<dyn IDisplayable>> = OnceLock::new();
-pub(crate) static CONTEXTS: OnceLock<ContextManager> = OnceLock::new();
+static SURFACE: OnceLock<wgpu::Surface> = OnceLock::new();
+static WINDOW: OnceLock<Arc<dyn IDisplayable>> = OnceLock::new();
+static CONTEXTS: OnceLock<ContextManager> = OnceLock::new();
 
 pub(crate) static GPU_RESOURCE: OnceLock<GpuResource> = OnceLock::new();
 
@@ -131,11 +134,11 @@ struct PipelineEntry {
 }
 
 struct GpuResource {
-    window: Arc<dyn IDisplayable>,
-    surface: RwLock<wgpu::Surface<'static>>,
-    config: RwLock<wgpu::SurfaceConfiguration>,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+    pub(crate) window: Arc<dyn IDisplayable>,
+    pub(crate) surface: RwLock<wgpu::Surface<'static>>,
+    pub(crate) config: RwLock<wgpu::SurfaceConfiguration>,
+    pub(crate) device: wgpu::Device,
+    pub(crate) queue: wgpu::Queue,
 }
 
 impl GpuResource {
@@ -232,9 +235,7 @@ pub enum GpuPipeline {
     Compute(wgpu::ComputePipeline),
 }
 
-impl IPipeline for GpuPipeline {
-    
-}
+impl IPipeline for GpuPipeline {}
 
 pub struct Gpu {
     node_id: [u8; 6],
@@ -269,6 +270,10 @@ impl Gpu {
             static_cmds: RwLock::new(BTreeMap::new()),
             depth_texture,
         })
+    }
+
+    pub(crate) fn get_resource(&self) -> &'static GpuResource {
+        GPU_RESOURCE.get().unwrap()
     }
 
     fn update_buffers(&self, ctx: UploadCtx) {
