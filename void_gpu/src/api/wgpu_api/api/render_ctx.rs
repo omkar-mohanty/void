@@ -1,16 +1,12 @@
 use uuid::Uuid;
-use wgpu::Buffer;
 
 use crate::api::wgpu_api::camera::Camera;
-use crate::api::{BufferId, DrawModel, IBindGroup, IContext, IRenderContext, PipelineId};
+use crate::api::{BindGroupId, BufferId, DrawModel, IContext, IRenderContext, PipelineId};
 use crate::camera::ICamera;
 use crate::model;
 
-use super::{ContextManager, CtxOut, Gpu, RenderCmd, CONTEXTS};
+use super::{CtxOut, RenderCmd, CONTEXTS};
 use std::ops::Range;
-use std::sync::Arc;
-
-impl IBindGroup for wgpu::BindGroup {}
 
 impl IContext for RenderCtx {
     type Out = CtxOut;
@@ -66,9 +62,9 @@ impl<'a> IRenderContext<'a> for RenderCtx {
             cmd.pipeline = Some(pipeline);
         });
     }
-    fn set_bind_group(&mut self, slot: u32, group: usize) {
+    fn set_bind_group(&mut self, slot: u32, group: BindGroupId) {
         self.encode(|cmd| {
-            cmd.bind_groups.push((slot, group));
+            cmd.bind_groups_id.push((slot, group));
         });
     }
     fn draw(&mut self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>) {

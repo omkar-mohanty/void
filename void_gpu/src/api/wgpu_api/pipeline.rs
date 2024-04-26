@@ -3,11 +3,9 @@ use std::sync::{Arc, OnceLock};
 use void_core::IBuilder;
 
 use crate::{
-    api::{Gpu, GpuPipeline, IPipeline, PipelineType, Texture},
+    api::{Gpu, GpuPipeline, PipelineType, Texture},
     model::{ModelVertex, Vertex},
 };
-
-impl IPipeline for wgpu::RenderPipeline {}
 
 pub(crate) static CAMERA_BIND_GROUP_LAYOUT: OnceLock<wgpu::BindGroupLayout> = OnceLock::new();
 pub(crate) static TEXTURE_BIND_GROUP_LAYOUT: OnceLock<wgpu::BindGroupLayout> = OnceLock::new();
@@ -79,7 +77,7 @@ impl<'a> PipelineBuilder<'a> {
         }
     }
     pub fn set_shader(&mut self, shader_src: &'a str) {
-        self.shader_src = Some(shader_src)
+        self.shader_src = Some(shader_src.to_string())
     }
     pub fn add_layout_descriptors(
         &mut self,
@@ -100,9 +98,9 @@ impl<'a> IBuilder for PipelineBuilder<'a> {
     type Output = GpuPipeline;
 
     async fn build(self) -> void_core::Result<Self::Output, void_core::BuilderError> {
-        let shader_src = self.shader_src.unwrap_or(DEFAULT_RENDER_SHADER);
-        let device = &self.gpu.device;
-        let color_format = self.gpu.config.read().unwrap().format;
+        let shader_src = self.shader_src.unwrap_or(DEFAULT_RENDER_SHADER.to_string());
+        let device = &self.gpu.get_resource().device;
+        let color_format = self.gpu.get_resource().config.read().unwrap().format;
 
         let mut layout_descriptors = vec![
             &TEXTURE_BIND_GROUP_LAYOUT_DESCRIPTOR,
@@ -135,7 +133,7 @@ impl<'a> IBuilder for PipelineBuilder<'a> {
         let pipeline = match self.pipeline_type {
             PipelineType::Render => {
                 let pipeline = create_render_pipeline(
-                    &self.gpu.device,
+                    &self.gpu.get_resource().device,
                     &layout,
                     color_format,
                     Some(Texture::DEPTH_FORMAT),
@@ -196,7 +194,7 @@ pub(crate) fn default_render_pipeline(
     );
 
     TEXTURE_BIND_GROUP_LAYOUT.get_or_init(|| bind_group_layouts.remove(0));
-    CAMERA_BIND_GROUP_LAYOUT.get_or_init(|| bind_group_layouts.remove(1));
+    CAMERA_BIND_GROUP_LAYOUT.get_or_init(|| bind_group_layouts.remove(0));
 
     GpuPipeline::Render(pipeline)
 }
@@ -260,11 +258,11 @@ fn create_render_pipeline(
 }
 
 fn create_compute_pipeline(
-    device: &Gpu,
+    gpu: &Gpu,
     layout: &wgpu::PipelineLayout,
     shader: wgpu::ShaderModuleDescriptor,
 ) -> wgpu::ComputePipeline {
-    let device = &device.device;
+    let device = &gpu.get_resource().device;
     let shader = device.create_shader_module(shader);
 
     let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {

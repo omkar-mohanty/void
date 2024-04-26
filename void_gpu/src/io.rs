@@ -1,5 +1,8 @@
 use crate::{
-    api::{BufferManager, Gpu, Texture, TextureError},
+    api::{
+        BindGroupId, BufferManager, ContextManager, Gpu, Texture, TextureError,
+        DEFAULT_CAMERA_BIND_GROUP_ID, DEFAULT_PIPELINE_ID,
+    },
     model,
 };
 use std::{
@@ -10,6 +13,7 @@ use std::{
 };
 use thiserror::Error;
 use tobj::LoadError;
+use uuid::Uuid;
 use wgpu::util::DeviceExt;
 
 #[cfg(target_arch = "wasm32")]
@@ -102,6 +106,16 @@ pub fn load_model(file_path: &PathBuf, gpu: &Gpu) -> Result<model::Model, IoErro
                 },
             ],
             label: None,
+        });
+
+        let bind_group = ContextManager::record(|ctx| {
+            let id = BindGroupId(Uuid::new_v4());
+
+            let mut pipelines = ctx.pipeline_db.pipelines.write().unwrap();
+            pipelines.entry(DEFAULT_PIPELINE_ID).and_modify(|pipeline| {
+                pipeline.bind_groups.insert(id, bind_group);
+            });
+            id
         });
 
         materials.push(model::Material {

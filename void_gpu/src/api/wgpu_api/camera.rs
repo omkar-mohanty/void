@@ -1,5 +1,5 @@
 use crate::{
-    api::{BufferId, Gpu, DEFAULT_CAMERA_BIND_GROUP_IDX, DEFAULT_CAMERA_BUFFER_ID},
+    api::{BindGroupId, BufferId, DEFAULT_CAMERA_BIND_GROUP_ID, DEFAULT_CAMERA_BUFFER_ID},
     camera::ICamera,
 };
 
@@ -12,7 +12,7 @@ pub struct Camera {
     znear: f32,
     zfar: f32,
     buffer_id: BufferId,
-    group: usize,
+    group_id: BindGroupId,
 }
 
 impl Camera {
@@ -26,7 +26,7 @@ impl Camera {
             znear: 0.1,
             zfar: 100.0,
             buffer_id: DEFAULT_CAMERA_BUFFER_ID,
-            group: DEFAULT_CAMERA_BIND_GROUP_IDX,
+            group_id: DEFAULT_CAMERA_BIND_GROUP_ID,
         }
     }
 }
@@ -40,7 +40,7 @@ impl ICamera for Camera {
     fn get_buffer(&self) -> BufferId {
         self.buffer_id
     }
-    fn get_bind_group(&self) -> usize {
-        self.group
+    fn get_bind_group(&self) -> BindGroupId {
+        self.group_id
     }
 }

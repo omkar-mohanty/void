@@ -37,7 +37,7 @@ where {
                         }
                         WindowEvent::RedrawRequested => {
                             self.render_engine.render();
-                            self.gpu.window.request_redraw();
+                            self.gpu.get_window().request_redraw();
                         }
                         _ => {}
                     },

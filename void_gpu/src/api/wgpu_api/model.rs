@@ -1,10 +1,11 @@
+use crate::api::BindGroupId;
 use crate::api::BufferId;
 use crate::api::Texture;
 
 pub struct Material {
     pub(crate) name: String,
     pub(crate) diffuse_texture: Texture,
-    pub(crate) bind_group: usize,
+    pub(crate) bind_group: BindGroupId,
 }
 
 pub struct Mesh {

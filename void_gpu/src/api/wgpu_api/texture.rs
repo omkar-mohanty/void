@@ -7,15 +7,15 @@ use crate::texture::ITexture;
 impl ITexture for Texture {
     type Err = TextureError;
     fn from_bytes(gpu_resource: &Gpu, bytes: &[u8]) -> Result<Self, TextureError> {
-        let device = &gpu_resource.device;
-        let queue = &gpu_resource.queue;
+        let device = &gpu_resource.get_resource().device;
+        let queue = &gpu_resource.get_resource().queue;
         let tex = Texture::from_bytes(&device, &queue, bytes, "texture")?;
         Ok(tex)
     }
 
     fn create_depth_texture(gpu_resource: &Gpu) -> Result<Self, Self::Err> {
-        let device = &gpu_resource.device;
-        let config = &gpu_resource.config.read().unwrap();
+        let device = &gpu_resource.get_resource().device;
+        let config = &gpu_resource.get_resource().config.read().unwrap();
 
         let tex = Texture::create_depth_texture(device, config, "Depth Texture");
         Ok(tex)

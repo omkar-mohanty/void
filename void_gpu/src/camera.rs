@@ -1,10 +1,12 @@
+use crate::api::BindGroupId;
+
 pub use crate::api::camera::Camera;
 use crate::api::BufferId;
 
 pub trait ICamera {
     fn build_view_projection_matrix(&self) -> na::Matrix4<f32>;
     fn get_buffer(&self) -> BufferId;
-    fn get_bind_group(&self) -> usize;
+    fn get_bind_group(&self) -> BindGroupId;
 }
 
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]

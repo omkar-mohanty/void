@@ -3,7 +3,7 @@ use std::ops::Range;
 
 use uuid::Uuid;
 
-use void_core::{rayon::iter::ParallelIterator, IBuilder};
+use void_core::rayon::iter::ParallelIterator;
 use wgpu_api::model::{Material, Mesh, Model};
 pub use wgpu_api::{
     api::*, camera, pipeline::PipelineBuilder, texture::Texture, texture::TextureError,
@@ -18,11 +18,8 @@ pub struct CommandListIndex(Uuid);
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct BufferId(Uuid);
 
-pub trait IBuffer {}
-
-pub trait IBindGroup {}
-
-pub trait IPipeline {}
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub struct BindGroupId(pub Uuid);
 
 pub trait ICtxOut: Send + Sync {}
 
@@ -33,7 +30,7 @@ pub trait IContext {
 
 pub trait IRenderContext<'a>: IContext + DrawModel<'a> {
     fn set_pipeline(&mut self, pipeline: PipelineId);
-    fn set_bind_group(&mut self, slot: u32, bind_group: usize);
+    fn set_bind_group(&mut self, slot: u32, bind_group: BindGroupId);
     fn set_vertex_buffer(&mut self, slot: u32, buffer: BufferId);
     fn set_index_buffer(&mut self, slot: u32, buffer: BufferId);
     fn draw(&mut self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>);
