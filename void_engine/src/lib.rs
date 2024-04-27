@@ -26,7 +26,7 @@ where {
         event_loop
             .run(|event, ewlt| {
                 self.check_resources();
-
+                self.render_engine.update();
                 match &event {
                     Event::WindowEvent { event, .. } => match &event {
                         WindowEvent::CloseRequested => ewlt.exit(),

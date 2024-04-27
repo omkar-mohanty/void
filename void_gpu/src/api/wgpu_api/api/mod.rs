@@ -2,6 +2,8 @@ use render_ctx::{DrawCmd, RenderCtx};
 use void_core::rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use wgpu::util::{DeviceExt, RenderEncoder};
 
+use self::upload_ctx::UploadCtx;
+
 use super::{
     pipeline::{default_render_pipeline, CAMERA_BIND_GROUP_LAYOUT},
     texture::{Texture, TextureError},
@@ -30,7 +32,7 @@ pub(crate) static DEFAULT_PIPELINE_ID: PipelineId =
 pub(crate) static DEFAULT_CAMERA_BUFFER_ID: BufferId =
     BufferId(uuid!("059089eb-c098-4fc5-b67a-cd24db18f6f6"));
 
-pub(crate) const DEFAULT_CAMERA_BIND_GROUP_ID: BindGroupId =
+pub(crate) static DEFAULT_CAMERA_BIND_GROUP_ID: BindGroupId =
     BindGroupId(uuid!("79e5bf90-8a9d-4b34-8e04-e7f619c2c7c4"));
 
 static CONTEXTS: OnceLock<ContextManager> = OnceLock::new();
@@ -84,7 +86,7 @@ impl ContextManager {
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(""),
                 contents: bytemuck::cast_slice(&[CameraUniform::new()]),
-                usage: wgpu::BufferUsages::UNIFORM,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             });
 
         let mut bind_groups = HashMap::new();
@@ -225,6 +227,7 @@ pub struct PipelineDB {
 
 pub enum CtxOut {
     Render(RenderCtx),
+    Upload(UploadCtx),
 }
 
 impl ICtxOut for CtxOut {}
@@ -310,6 +313,20 @@ impl IGpu for Gpu {
             CtxOut::Render(ctx) => {
                 let mut ctxs = self.render_ctxs.write().unwrap();
                 ctxs.insert(CommandListIndex::new(&self.node_id), ctx);
+            }
+            CtxOut::Upload(ctx) => {
+                let UploadCtx { buffer_id, data } = ctx;
+                let resource = self.get_resource();
+                let queue = &resource.queue;
+                let ctx = CONTEXTS.get().unwrap();
+                let manager = ctx.buffer_manager.write().unwrap();
+
+                if let Some(buffer_id) = buffer_id {
+                    let buffer = manager.buffers.get(&buffer_id).unwrap();
+                    if let Some(data) = data {
+                        queue.write_buffer(buffer, 0, &data);
+                    }
+                }
             }
         }
     }

@@ -10,7 +10,7 @@ pub use wgpu_api::{
     IDisplayable,
 };
 
-use crate::camera::{ICamera, UpdateCamera};
+use crate::camera::{ICamera, IUpdateCamera};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct CommandListIndex(Uuid);
@@ -36,7 +36,7 @@ pub trait IRenderContext<'a>: IContext + DrawModel<'a> {
     fn draw(&mut self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>);
 }
 
-pub trait IUploadContext<'a>: IContext + UpdateCamera<'a> {
+pub trait IUploadContext<'a>: IContext + IUpdateCamera<'a> {
     fn upload_buffer(&mut self, buffer_id: BufferId, data: &'a [u8]);
 }
 

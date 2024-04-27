@@ -2,8 +2,8 @@ use std::sync::Arc;
 use thiserror::Error;
 use void_core::db::IDb;
 use void_gpu::{
-    api::{render_ctx::RenderCtx, DrawModel, Gpu, GpuError, IContext, IGpu},
-    camera::{Camera, CameraUniform},
+    api::{render_ctx::RenderCtx, upload_ctx::UploadCtx, DrawModel, Gpu, GpuError, IContext, IGpu},
+    camera::{Camera, CameraUniform, IUpdateCamera},
     model::*,
 };
 
@@ -27,6 +27,9 @@ impl RendererEngine {
 
     pub fn update(&mut self) {
         self.camera_uniform.update_view_proj(&self.camera);
+        let mut upload_ctx = UploadCtx::default();
+        upload_ctx.update_camera(&self.camera, &[self.camera_uniform]);
+        self.gpu.submit_ctx_out(upload_ctx.finish());
     }
 
     pub fn add_model(&mut self, model: Model) {

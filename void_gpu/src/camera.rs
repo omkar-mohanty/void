@@ -27,6 +27,7 @@ impl CameraUniform {
     }
 }
 
-pub trait UpdateCamera<'a> {
-    fn update_camera(&mut self, uniform: &'a [CameraUniform]);
+pub trait IUpdateCamera<'a> {
+    type Camera: ICamera;
+    fn update_camera(&mut self, camera: &'a Self::Camera, uniform: &'a [CameraUniform]);
 }

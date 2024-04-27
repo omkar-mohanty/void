@@ -1,5 +1,5 @@
 use crate::{
-    api::{BindGroupId, BufferId, DEFAULT_CAMERA_BIND_GROUP_ID, DEFAULT_CAMERA_BUFFER_ID},
+    api::{BindGroupId, BufferId, Gpu, DEFAULT_CAMERA_BIND_GROUP_ID, DEFAULT_CAMERA_BUFFER_ID},
     camera::ICamera,
 };
 
