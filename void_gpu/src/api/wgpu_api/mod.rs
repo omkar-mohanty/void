@@ -14,7 +14,8 @@ pub trait IDisplayable: Sync + Send + HasDisplayHandle + HasWindowHandle {
     fn get_inner(&self) -> wgpu::SurfaceTarget {
         SurfaceTarget::Window(Box::new(self))
     }
-
+    fn height(&self) -> f32;
+    fn width(&self) -> f32;
     fn request_redraw(&self);
 }
 

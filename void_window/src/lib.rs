@@ -1,10 +1,7 @@
 use std::ops::Deref;
 use void_gpu::api::IDisplayable;
 
-use wgpu::{
-    rwh::{HasDisplayHandle, HasWindowHandle},
-    SurfaceTarget,
-};
+use wgpu::rwh::{HasDisplayHandle, HasWindowHandle};
 
 pub use winit::*;
 
@@ -33,5 +30,11 @@ impl Deref for Window {
 impl IDisplayable for Window {
     fn request_redraw(&self) {
         self.0.request_redraw();
+    }
+    fn width(&self) -> f32 {
+        self.0.inner_size().width as f32
+    }
+    fn height(&self) -> f32 {
+        self.0.inner_size().height as f32
     }
 }

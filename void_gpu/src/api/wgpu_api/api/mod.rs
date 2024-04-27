@@ -282,10 +282,6 @@ impl IGpu for Gpu {
     type Err = GpuError;
     type CtxOut = CtxOut;
 
-    fn create_buffer(&self) -> BufferId {
-        todo!()
-    }
-
     fn window_update(&self, width: u32, height: u32) {
         if width <= 0 || height <= 0 {
             return;
@@ -344,7 +340,7 @@ impl IGpu for Gpu {
 
         let depth_tex = &self.depth_texture.read().unwrap().view;
 
-        let cmds_ordered:Vec<_> = ctxs
+        let cmds_ordered: Vec<_> = ctxs
             .into_par_iter()
             .map(|(_, ctx)| {
                 let id = ctx.id;
@@ -407,7 +403,7 @@ impl IGpu for Gpu {
                         rpass.set_bind_group(slot, bind_group, &[]);
                     }
 
-                    if let Some((slot, vertex_buffer_id)) = vertex_buffer  {
+                    if let Some((slot, vertex_buffer_id)) = vertex_buffer {
                         let buffer = manager.buffers.get(vertex_buffer_id).unwrap();
                         rpass.set_vertex_buffer(*slot, buffer.slice(..));
                     }
@@ -420,20 +416,61 @@ impl IGpu for Gpu {
                     if let GpuPipeline::Render(pipeline) = pipeline {
                         rpass.set_pipeline(pipeline);
                     }
-                        
+
                     if let Some(cmd) = draw_cmd {
-                        let DrawCmd { indices, base_vertex, instances } = cmd;
+                        let DrawCmd {
+                            indices,
+                            base_vertex,
+                            instances,
+                        } = cmd;
                         rpass.draw_indexed(indices.clone(), *base_vertex, instances.clone());
                     }
-
                 }
                 cmd_encoder.finish()
-            }).collect();
+            })
+            .collect();
 
-        queue.submit(cmds_ordered);
+        let clear_cmd = {
+            let mut cmd_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Clear command encoder"),
+            });
+
+            {
+                let _rpass = cmd_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Render Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: 0.1,
+                                g: 0.2,
+                                b: 0.3,
+                                a: 1.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &depth_tex,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }),
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+            }
+            cmd_encoder.finish()
+        };
+
+        let cmds = std::iter::once(clear_cmd).chain(cmds_ordered);
+
+        queue.submit(cmds);
         current_texture.present();
         Ok(())
-
     }
 }
 

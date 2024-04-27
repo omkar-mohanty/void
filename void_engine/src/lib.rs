@@ -1,16 +1,15 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
-use void_core::{crossbeam_queue::ArrayQueue, db::IDb, rayon::ThreadPool, Result, SystemError};
+use void_core::{crossbeam_queue::ArrayQueue, rayon::ThreadPool, Result, SystemError};
 use void_gpu::{
     api::{Gpu, IGpu},
-    model::{Model, ModelDB},
+    model::Model,
 };
 use void_io::IoEngine;
 use void_render::RendererEngine;
 use void_window::{
     event::{Event, WindowEvent},
     event_loop::EventLoop,
-    Window,
 };
 
 pub struct App {
@@ -36,7 +35,7 @@ where {
                                 .window_update(physical_size.width, physical_size.height);
                         }
                         WindowEvent::RedrawRequested => {
-                            self.render_engine.render();
+                            self.render_engine.render().unwrap();
                             self.gpu.get_window().request_redraw();
                         }
                         _ => {}

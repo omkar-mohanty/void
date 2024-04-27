@@ -74,7 +74,6 @@ pub trait IGpu {
             self.submit_ctx_out(out);
         });
     }
-    fn create_buffer(&self) -> BufferId;
     fn window_update(&self, width: u32, height: u32);
     fn present(&self) -> Result<(), Self::Err>;
 }

@@ -1,7 +1,7 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use void_core::{crossbeam_queue::ArrayQueue, rayon::ThreadPoolBuilder};
 use void_engine::App;
-use void_gpu::{api::Gpu, model::ModelDB};
+use void_gpu::api::Gpu;
 use void_io::IoEngine;
 use void_render::RendererEngine;
 use void_window::{event_loop::EventLoop, window::WindowBuilder, Window};

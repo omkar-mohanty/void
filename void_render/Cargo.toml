@@ -10,3 +10,5 @@ void_window = {path = "../void_window"}
 log = "0.4.21"
 void_core = { path = "../void_core" }
 void_gpu = {path = "../void_gpu"}
+thiserror = "1.0.58"
+

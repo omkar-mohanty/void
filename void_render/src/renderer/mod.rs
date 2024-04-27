@@ -1,7 +1,8 @@
 use std::sync::Arc;
+use thiserror::Error;
 use void_core::db::IDb;
 use void_gpu::{
-    api::{render_ctx::RenderCtx, DrawModel, Gpu, IContext, IGpu},
+    api::{render_ctx::RenderCtx, DrawModel, Gpu, GpuError, IContext, IGpu},
     camera::{Camera, CameraUniform},
     model::*,
 };
@@ -24,11 +25,15 @@ impl RendererEngine {
         }
     }
 
+    pub fn update(&mut self) {
+        self.camera_uniform.update_view_proj(&self.camera);
+    }
+
     pub fn add_model(&mut self, model: Model) {
         self.model_db.insert(std::iter::once(model));
     }
 
-    pub fn render(&self) {
+    pub fn render(&self) -> Result<(), RenderError> {
         let _outs: Vec<_> = self
             .model_db
             .iter()
@@ -39,6 +44,13 @@ impl RendererEngine {
                 self.gpu.submit_ctx_out(out);
             })
             .collect();
-        self.gpu.present().unwrap();
+        self.gpu.present()?;
+        Ok(())
     }
+}
+
+#[derive(Error, Debug)]
+pub enum RenderError {
+    #[error("Error creating texture {0}")]
+    GpuError(#[from] GpuError),
 }
