@@ -33,16 +33,20 @@ impl RendererEngine {
     }
 
     pub fn add_model(&mut self, model: Model) {
-        self.model_db.insert(std::iter::once(model));
+        let entry = ModelEntry {
+            model,
+            instances: Vec::new(),
+        };
+        self.model_db.insert(std::iter::once(entry));
     }
 
     pub fn render(&self) -> Result<(), RenderError> {
         let _outs: Vec<_> = self
             .model_db
             .iter()
-            .map(|(_, model)| {
+            .map(|(_, entry)| {
                 let mut ctx = RenderCtx::new();
-                ctx.draw_model(model, &self.camera);
+                ctx.draw_model(&entry.model, &self.camera);
                 let out = ctx.finish();
                 self.gpu.submit_ctx_out(out);
             })

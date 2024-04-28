@@ -22,6 +22,7 @@ impl ITexture for Texture {
     }
 }
 
+#[allow(dead_code)]
 pub struct Texture {
     pub(crate) texture: wgpu::Texture,
     pub(crate) view: wgpu::TextureView,

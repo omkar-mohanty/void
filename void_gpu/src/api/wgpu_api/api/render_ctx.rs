@@ -38,6 +38,7 @@ impl<'a> DrawModel<'a> for RenderCtx {
         camera_bind_group: &'a Self::Camera,
     ) {
         self.set_vertex_buffer(0, mesh.vertex_buffer);
+        self.set_vertex_buffer(1, mesh.instance_buffer);
         self.set_index_buffer(1, mesh.index_buffer);
         self.set_bind_group(0, material.bind_group);
         self.set_bind_group(1, camera_bind_group.get_bind_group());
@@ -83,7 +84,7 @@ impl<'a> IRenderContext<'a> for RenderCtx {
     }
     fn set_vertex_buffer(&mut self, slot: u32, buffer: BufferId) {
         self.encode(|cmd| {
-            cmd.vertex_buffer = Some((slot, buffer));
+            cmd.vertex_buffer.push((slot, buffer));
         });
     }
 }

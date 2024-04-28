@@ -1,14 +1,12 @@
 use crate::{
     api::{
-        BindGroupId, BufferManager, ContextManager, Gpu, Texture, TextureError,
-        DEFAULT_CAMERA_BIND_GROUP_ID, DEFAULT_PIPELINE_ID,
+        BindGroupId, BufferManager, ContextManager, Gpu, Texture, TextureError, DEFAULT_PIPELINE_ID,
     },
-    model,
+    model::{self, Instance},
 };
 use std::{
     fs,
     io::{BufReader, Cursor},
-    ops::Deref,
     path::PathBuf,
 };
 use thiserror::Error;
@@ -154,13 +152,20 @@ pub fn load_model(file_path: &PathBuf, gpu: &Gpu) -> Result<model::Model, IoErro
                 contents: bytemuck::cast_slice(&m.mesh.indices),
                 usage: wgpu::BufferUsages::INDEX,
             });
+            let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Instance Buffer"),
+                contents: bytemuck::cast_slice(&[Instance::default().to_raw()]),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
 
             let vertex_buffer = BufferManager::add_buffer(vertex_buffer);
             let index_buffer = BufferManager::add_buffer(index_buffer);
+            let instance_buffer = BufferManager::add_buffer(instance_buffer);
 
             model::Mesh {
                 name: file_path.display().to_string(),
                 vertex_buffer,
+                instance_buffer,
                 index_buffer,
                 num_elements: m.mesh.indices.len() as u32,
                 material: m.mesh.material_id.unwrap_or(0),

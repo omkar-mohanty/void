@@ -1,8 +1,8 @@
 use render_ctx::{DrawCmd, RenderCtx};
-use void_core::rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
-use wgpu::util::{DeviceExt, RenderEncoder};
+use void_core::rayon::iter::{IntoParallelIterator, ParallelIterator};
+use wgpu::util::DeviceExt;
 
-use self::upload_ctx::UploadCtx;
+use upload_ctx::UploadCtx;
 
 use super::{
     pipeline::{default_render_pipeline, CAMERA_BIND_GROUP_LAYOUT},
@@ -42,7 +42,7 @@ pub(crate) static GPU_RESOURCE: OnceLock<GpuResource> = OnceLock::new();
 #[derive(Default)]
 pub struct RenderCmd {
     pub(crate) bind_groups_id: Vec<(u32, BindGroupId)>,
-    pub(crate) vertex_buffer: Option<(u32, BufferId)>,
+    pub(crate) vertex_buffer: Vec<(u32, BufferId)>,
     pub(crate) index_buffer: Option<BufferId>,
     pub(crate) pipeline: Option<PipelineId>,
     pub(crate) draw_cmd: Option<DrawCmd>,
@@ -420,7 +420,7 @@ impl IGpu for Gpu {
                         rpass.set_bind_group(slot, bind_group, &[]);
                     }
 
-                    if let Some((slot, vertex_buffer_id)) = vertex_buffer {
+                    for (slot, vertex_buffer_id) in vertex_buffer {
                         let buffer = manager.buffers.get(vertex_buffer_id).unwrap();
                         rpass.set_vertex_buffer(*slot, buffer.slice(..));
                     }

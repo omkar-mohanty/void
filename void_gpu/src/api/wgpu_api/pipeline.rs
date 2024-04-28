@@ -4,7 +4,7 @@ use void_core::IBuilder;
 
 use crate::{
     api::{Gpu, GpuPipeline, PipelineType, Texture},
-    model::{ModelVertex, Vertex},
+    model::{InstanceRaw, ModelVertex, Vertex},
 };
 
 pub(crate) static CAMERA_BIND_GROUP_LAYOUT: OnceLock<wgpu::BindGroupLayout> = OnceLock::new();
@@ -188,7 +188,7 @@ pub(crate) fn default_render_pipeline(
         &layout,
         color_format,
         Some(Texture::DEPTH_FORMAT),
-        &[ModelVertex::desc()],
+        &[ModelVertex::desc(), InstanceRaw::desc()],
         wgpu::PrimitiveTopology::TriangleList,
         shader,
     );
