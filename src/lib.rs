@@ -1,6 +1,5 @@
 mod camera;
 mod gui;
-mod instance;
 mod integration;
 mod light;
 mod model;
@@ -12,14 +11,11 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::instance::Instance;
-use crate::model::{ModelVertex, Vertex};
+use crate::model::{ModelVertex, Vertex, Instance, InstanceRaw};
 use camera::{Camera, CameraController, CameraUniform};
-use cgmath::prelude::*;
+use cgmath::{prelude::*, Vector3};
 use egui_wgpu::renderer::ScreenDescriptor;
-use egui_wgpu::wgpu;
 use gui::nullus_gui;
-use instance::InstanceRaw;
 use integration::{Controller, EguiRenderer};
 use light::LightUniform;
 use wgpu::util::DeviceExt;
@@ -264,21 +260,19 @@ impl State {
         let instances = (0..NUM_INSTANCES_PER_ROW)
             .flat_map(|z| {
                 (0..NUM_INSTANCES_PER_ROW).map(move |x| {
+                    use nalgebra as na;
                     let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
                     let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
 
-                    let position = cgmath::Vector3 { x, y: 0.0, z };
+                    let position =  na::Vector3::new(x, 0.0, z);
 
-                    let rotation = if position.is_zero() {
-                        cgmath::Quaternion::from_axis_angle(
-                            cgmath::Vector3::unit_z(),
-                            cgmath::Deg(0.0),
-                        )
+                    let isometry = if position  ==  na::Vector3::zero() {
+                        na::Isometry3::new(position, *na::Vector3::y_axis())
                     } else {
-                        cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
+                        na::Isometry3::new(position, position)
                     };
 
-                    Instance { position, rotation }
+                    Instance { isometry }
                 })
             })
             .collect::<Vec<_>>();
