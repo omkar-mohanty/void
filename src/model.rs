@@ -1,5 +1,6 @@
-use std::ops::Range;
+use na::*;
 use nalgebra as na;
+use std::ops::Range;
 
 use crate::texture;
 
@@ -26,9 +27,19 @@ pub struct Model {
     pub materials: Vec<Material>,
 }
 
+#[derive(Default)]
 pub struct Instance {
-    pub isometry: na::Isometry3<f32>,
+    pub isometry: Isometry3<f32>,
 }
+
+impl Instance {
+    pub fn new(translation: Vector3<f32>, rotation: Vector3<f32>) -> Self {
+        Self {
+            isometry: Isometry3::new(translation, rotation),
+        }
+    }
+}
+
 // NEW!
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]

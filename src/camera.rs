@@ -1,9 +1,9 @@
 use nalgebra as na;
 
 pub struct Camera {
-    pub eye: cgmath::Point3<f32>,
-    pub target: cgmath::Point3<f32>,
-    pub up: cgmath::Vector3<f32>,
+    pub eye: na::Point3<f32>,
+    pub target: na::Point3<f32>,
+    pub up: na::Vector3<f32>,
     pub aspect: f32,
     pub fovy: f32,
     pub znear: f32,
@@ -11,13 +11,31 @@ pub struct Camera {
 }
 
 impl Camera {
-    fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
+    pub fn new(width: f32, height: f32) -> Self {
+        Camera {
+            // position the camera 1 unit up and 2 units back
+            // +z is out of the screen
+            eye: na::Point3::new(0.0, 1.0, 2.0),
+            // have it look at the origin
+            target: na::Point3::origin(),
+            // which way is "up"
+            up: *na::Vector3::y_axis(),
+            aspect: width / height,
+            fovy: 45.0,
+            znear: 0.1,
+            zfar: 100.0,
+        }
+    }
+}
+
+impl Camera {
+    fn build_view_projection_matrix(&self) -> na::Matrix4<f32> {
         // 1.
-        let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
+        let view = na::Isometry3::look_at_rh(&self.eye, &self.target, &self.up);
         // 2.
-        let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
+        let proj = na::Perspective3::new(self.aspect, self.fovy, self.znear, self.zfar);
         // 3.
-        proj * view
+        proj.as_matrix() * view.to_matrix()
     }
 }
 
@@ -74,7 +92,6 @@ impl CameraController {
     }
 
     pub fn update_camera(&self, camera: &mut Camera) {
-        use cgmath::InnerSpace;
         let forward = camera.target - camera.eye;
         let forward_norm = forward.normalize();
         let forward_mag = forward.magnitude();
@@ -88,7 +105,7 @@ impl CameraController {
             camera.eye -= forward_norm * self.speed;
         }
 
-        let right = forward_norm.cross(camera.up);
+        let right = forward_norm.cross(&camera.up);
 
         // Redo radius calc in case the forward/backward is pressed.
         let forward = camera.target - camera.eye;

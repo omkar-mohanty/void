@@ -1,4 +1,7 @@
+extern crate nalgebra as na;
+
 mod camera;
+mod db;
 mod gui;
 mod integration;
 mod light;
@@ -6,18 +9,20 @@ mod model;
 mod resource;
 mod texture;
 
-use std::{
-    iter,
-    sync::{Arc, RwLock},
-};
-
-use crate::model::{ModelVertex, Vertex, Instance, InstanceRaw};
+use crate::model::{Instance, InstanceRaw, ModelVertex, Vertex};
+use crate::db::Id;
 use camera::{Camera, CameraController, CameraUniform};
-use cgmath::{prelude::*, Vector3};
+use db::DB;
 use egui_wgpu::renderer::ScreenDescriptor;
 use gui::nullus_gui;
 use integration::{Controller, EguiRenderer};
 use light::LightUniform;
+use model::DrawLight;
+use model::DrawModel;
+use std::{
+    iter,
+    sync::{Arc, RwLock},
+};
 use wgpu::util::DeviceExt;
 use wgpu::TextureViewDescriptor;
 use winit::{
@@ -97,6 +102,26 @@ impl Controller for Arc<RwLock<CameraController>> {
     }
 }
 
+type ModelDB = DB<ModelEntry>;
+type BindGroupDB = DB<BindGroupEntry>;
+type PipelineDB = DB<PipelineEntry>;
+
+enum PipelineEntry {
+    Render(wgpu::RenderPipeline),
+    Compute(wgpu::ComputePipeline),
+}
+
+struct ModelEntry {
+    model: model::Model,
+    instances: Vec<model::Instance>,
+    instance_buffer: wgpu::Buffer,
+}
+
+struct BindGroupEntry {
+    bind_group: Option<wgpu::BindGroup>,
+    layout: wgpu::BindGroupLayout,
+}
+
 struct State {
     surface: wgpu::Surface,
     device: wgpu::Device,
@@ -110,7 +135,7 @@ struct State {
     camera: Camera,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
-    camera_bind_group: wgpu::BindGroup,
+    camera_bind_group: Id,
     camera_controller: Arc<RwLock<CameraController>>,
     instance_buffer: wgpu::Buffer,
     instances: Vec<Instance>,
@@ -120,6 +145,8 @@ struct State {
     light_buffer: wgpu::Buffer,
     light_bind_group: wgpu::BindGroup,
     light_render_pipeline: wgpu::RenderPipeline,
+    model_db: ModelDB,
+    bind_group_db: BindGroupDB,
 }
 
 impl State {
@@ -209,19 +236,7 @@ impl State {
                 ],
             });
 
-        let camera = Camera {
-            // position the camera 1 unit up and 2 units back
-            // +z is out of the screen
-            eye: (0.0, 1.0, 2.0).into(),
-            // have it look at the origin
-            target: (0.0, 0.0, 0.0).into(),
-            // which way is "up"
-            up: cgmath::Vector3::unit_y(),
-            aspect: config.width as f32 / config.height as f32,
-            fovy: 45.0,
-            znear: 0.1,
-            zfar: 100.0,
-        };
+        let camera = Camera::new(config.width as f32, config.height as f32);
 
         let mut camera_uniform = CameraUniform::new();
         camera_uniform.update_view_proj(&camera);
@@ -264,9 +279,9 @@ impl State {
                     let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
                     let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
 
-                    let position =  na::Vector3::new(x, 0.0, z);
+                    let position = na::Vector3::new(x, 0.0, z);
 
-                    let isometry = if position  ==  na::Vector3::zero() {
+                    let isometry = if position == na::Vector3::zeros() {
                         na::Isometry3::new(position, *na::Vector3::y_axis())
                     } else {
                         na::Isometry3::new(position, position)
@@ -385,6 +400,19 @@ impl State {
                 .await
                 .unwrap();
 
+        let model_db = ModelDB::default();
+        let mut bind_group_db = BindGroupDB::default();
+
+        let texture_bind_group = bind_group_db.insert(BindGroupEntry {
+            bind_group: None,
+            layout: texture_bind_group_layout,
+        });
+
+        let camera_bind_group = bind_group_db.insert(BindGroupEntry {
+            bind_group: Some(camera_bind_group),
+            layout: camera_bind_group_layout,
+        });
+
         Self {
             depth_texture,
             surface,
@@ -407,6 +435,8 @@ impl State {
             light_bind_group,
             light_render_pipeline,
             camera_controller: Arc::new(RwLock::new(CameraController::new(1.0))),
+            model_db,
+            bind_group_db,
         }
     }
 
@@ -440,11 +470,9 @@ impl State {
         self.camera_uniform.update_view_proj(&self.camera);
 
         // Update the light
-        let old_position: cgmath::Vector3<_> = self.light_uniform.position.into();
-        self.light_uniform.position =
-            (cgmath::Quaternion::from_axis_angle((0.0, 1.0, 0.0).into(), cgmath::Deg(1.0))
-                * old_position)
-                .into();
+        let old_position: nalgebra::Vector3<_> = self.light_uniform.position.into();
+        let isom = na::Isometry3::new(old_position, *na::Vector3::y_axis());
+        self.light_uniform.position = isom.translation.into();
         self.queue.write_buffer(
             &self.light_buffer,
             0,
@@ -469,6 +497,9 @@ impl State {
             base_array_layer: 0,
             array_layer_count: None,
         });
+
+        let camera_bind_group_entry = self.bind_group_db.get(self.camera_bind_group);
+        let camera_bind_group = camera_bind_group_entry.bind_group.as_ref().unwrap();
 
         let mut encoder = self
             .device
@@ -504,23 +535,34 @@ impl State {
                 timestamp_writes: None,
             });
 
-            use crate::model::DrawLight;
-
             render_pass.set_pipeline(&self.light_render_pipeline);
             render_pass.draw_light_model(
                 &self.obj_model,
-                &self.camera_bind_group,
+                camera_bind_group,
                 &self.light_bind_group,
             );
 
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
             render_pass.set_pipeline(&self.render_pipeline);
 
-            use model::DrawModel;
+            for (_, entry) in self.model_db.data.iter() {
+                let model = &entry.model;
+                let instances = &entry.instances;
+                let instane_buffer = &entry.instance_buffer;
+
+                render_pass.set_vertex_buffer(1, instane_buffer.slice(..));
+                render_pass.draw_model_instanced(
+                    model,
+                    0..instances.len() as u32,
+                    camera_bind_group,
+                    &self.light_bind_group,
+                )
+            }
+
             render_pass.draw_model_instanced(
                 &self.obj_model,
                 0..self.instances.len() as u32,
-                &self.camera_bind_group,
+                camera_bind_group,
                 &self.light_bind_group,
             );
         }
