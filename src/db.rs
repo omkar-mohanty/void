@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::sync::Arc;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     OnceLock, RwLock,
@@ -85,6 +86,17 @@ impl Display for Id {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct MockRpass {
+        bind_group: u32,
+    }
+
+    impl MockRpass {
+        fn set_bind_group(&mut self, group: u32) {
+            self.bind_group = group;
+        }
+    }
+
     #[test]
     fn test_db() {
         let mut db = DB::default();

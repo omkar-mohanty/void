@@ -1,7 +1,9 @@
 extern crate nalgebra as na;
 
+pub mod app;
 mod camera;
 mod db;
+pub mod gpu;
 mod gui;
 mod integration;
 mod light;
@@ -9,8 +11,8 @@ mod model;
 mod resource;
 mod texture;
 
-use crate::model::{Instance, InstanceRaw, ModelVertex, Vertex};
 use crate::db::Id;
+use crate::model::{Instance, InstanceRaw, ModelVertex, Vertex};
 use camera::{Camera, CameraController, CameraUniform};
 use db::DB;
 use egui_wgpu::renderer::ScreenDescriptor;
@@ -122,7 +124,25 @@ struct BindGroupEntry {
     layout: wgpu::BindGroupLayout,
 }
 
-struct State {
+struct Resources {
+    pub pipeline_db: RwLock<PipelineDB>,
+    pub bind_group_db: RwLock<BindGroupDB>,
+    pub model_db: RwLock<ModelDB>,
+    pub config: RwLock<wgpu::SurfaceConfiguration>,
+}
+
+impl Resources {
+    pub fn new(config: wgpu::SurfaceConfiguration) -> Self {
+        Self {
+            pipeline_db: RwLock::default(),
+            bind_group_db: RwLock::default(),
+            model_db: RwLock::default(),
+            config: RwLock::new(config),
+        }
+    }
+}
+
+struct Renderer {
     surface: wgpu::Surface,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -149,7 +169,7 @@ struct State {
     bind_group_db: BindGroupDB,
 }
 
-impl State {
+impl Renderer {
     async fn new(window: Window) -> Self {
         let size = window.inner_size();
 
@@ -595,7 +615,7 @@ pub async fn run() {
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
     // State::new uses async code, so we're going to wait for it to finish
-    let mut state = State::new(window).await;
+    let mut state = Renderer::new(window).await;
 
     let _ = event_loop.run(move |event, ewlt| match event {
         Event::WindowEvent {
