@@ -1,6 +1,7 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc, vec};
 
-use crate::{gpu::Gpu, resource, Renderer, Resources};
+use crate::{gpu::Gpu, model, resource, texture, ModelEntry, Renderer, Resources};
+use wgpu::util::DeviceExt;
 use winit::{
     event::*,
     event_loop::EventLoop,
@@ -10,6 +11,7 @@ use winit::{
 
 pub struct App {
     resources: Arc<Resources>,
+    gpu: Arc<Gpu>,
     renderer: Renderer,
     event_loop: EventLoop<()>,
 }
@@ -17,25 +19,44 @@ pub struct App {
 impl App {
     pub async fn new() -> Self {
         let event_loop = EventLoop::new().unwrap();
-        let window = WindowBuilder::new().build(&event_loop).unwrap();
+        let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
 
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
+        let gpu = Arc::new(Gpu::new(Arc::clone(&window)).await);
 
-        let surface = Arc::new(unsafe { instance.create_surface(&window) }.unwrap());
-
-        let gpu = Gpu::new(&instance, Arc::clone(&surface));
-
-        let renderer = Renderer::new(window).await;
+        let renderer = Renderer::new(window, Arc::clone(&gpu)).await;
         let resources = Arc::new(Resources::new());
 
         Self {
             event_loop,
             renderer,
             resources,
+            gpu,
         }
+    }
+
+    pub async fn handle_file_drop(&mut self, path: &PathBuf) -> anyhow::Result<()> {
+        let path_string = path.display().to_string();
+        let layout = texture::Texture::get_bind_group_layout(&self.gpu);
+        let model = resource::load_model(&path_string, &self.gpu, &layout).await?;
+        let mut model_db = self.resources.model_db.write().unwrap();
+        let device = &self.gpu.device;
+        let instances = vec![model::Instance::default()];
+
+        let instance_data = instances
+            .iter()
+            .map(model::Instance::to_raw)
+            .collect::<Vec<_>>();
+        let model_entry = ModelEntry {
+            instances,
+            instance_buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Model instance"),
+                contents: bytemuck::cast_slice(&instance_data),
+                usage: wgpu::BufferUsages::VERTEX,
+            }),
+            model,
+        };
+        model_db.insert(model_entry);
+        Ok(())
     }
 
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]

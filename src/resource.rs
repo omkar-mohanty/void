@@ -3,7 +3,7 @@ use std::io::{BufReader, Cursor};
 use cfg_if::cfg_if;
 use wgpu::util::DeviceExt;
 
-use crate::{model, texture};
+use crate::{gpu::Gpu, model, texture};
 
 #[cfg(target_arch = "wasm32")]
 fn format_url(file_name: &str) -> reqwest::Url {
@@ -67,10 +67,10 @@ pub async fn load_texture(
 
 pub async fn load_model(
     file_name: &str,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
+    gpu: &Gpu,
     layout: &wgpu::BindGroupLayout,
 ) -> anyhow::Result<model::Model> {
+    let (device, queue) = (&gpu.device, &gpu.queue);
     let obj_text = load_string(file_name).await?;
     let obj_cursor = Cursor::new(obj_text);
     let mut obj_reader = BufReader::new(obj_cursor);

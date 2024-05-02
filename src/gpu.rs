@@ -1,10 +1,12 @@
 use std::{
     cell::OnceCell,
     collections::BTreeMap,
-    sync::{atomic::AtomicUsize, Arc, OnceLock, RwLock},
+    ops::Deref,
+    sync::{atomic::AtomicUsize, Arc, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
 use wgpu::TextureView;
+use winit::window::Window;
 
 static CMD_ID: OnceLock<AtomicUsize> = OnceLock::new();
 
@@ -12,13 +14,25 @@ pub struct Gpu {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub surface: Arc<wgpu::Surface>,
-    cmds: RwLock<BTreeMap<usize, wgpu::CommandBuffer>>,
+    window: Arc<Window>,
+    config: Arc<RwLock<wgpu::SurfaceConfiguration>>,
     current_texture_view: RwLock<OnceCell<wgpu::SurfaceTexture>>,
+    cmds: RwLock<BTreeMap<usize, wgpu::CommandBuffer>>,
 }
 
 impl Gpu {
-    pub async fn new(instance: &wgpu::Instance, surface: Arc<wgpu::Surface>) -> Self {
+    pub async fn new(window: Arc<Window>) -> Self {
         CMD_ID.get_or_init(|| AtomicUsize::new(0));
+
+        let size = window.inner_size();
+
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            ..Default::default()
+        });
+
+        let surface = Arc::new(unsafe { instance.create_surface(&window) }.unwrap());
+
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
@@ -41,12 +55,38 @@ impl Gpu {
             )
             .await
             .unwrap();
+
+        let surface_caps = surface.get_capabilities(&adapter);
+        // Shader code in this tutorial assumes an Srgb surface texture. Using a different
+        // one will result all the colors comming out darker. If you want to support non
+        // Srgb surfaces, you'll need to account for that when drawing to the frame.
+        let surface_format = surface_caps
+            .formats
+            .iter()
+            .copied()
+            .find(|f| f.is_srgb())
+            .unwrap_or(surface_caps.formats[0]);
+
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: surface_format,
+            width: size.width,
+            height: size.height,
+            present_mode: surface_caps.present_modes[0],
+            alpha_mode: surface_caps.alpha_modes[0],
+            view_formats: vec![],
+        };
+
+        surface.configure(&device, &config);
+
         Self {
             device,
             queue,
             surface,
             cmds: RwLock::new(BTreeMap::default()),
             current_texture_view: RwLock::new(OnceCell::new()),
+            window,
+            config: Arc::new(RwLock::new(config)),
         }
     }
 
@@ -72,6 +112,14 @@ impl Gpu {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let mut cmds_write = self.cmds.write().unwrap();
         cmds_write.insert(id, cmd);
+    }
+
+    pub fn get_config(&self) -> RwLockReadGuard<wgpu::SurfaceConfiguration> {
+        self.config.read().unwrap()
+    }
+
+    pub fn get_config_mut(&self) -> RwLockWriteGuard<wgpu::SurfaceConfiguration> {
+        self.config.write().unwrap()
     }
 
     pub fn finish(&self) {

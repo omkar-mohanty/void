@@ -16,11 +16,13 @@ use crate::model::{Instance, InstanceRaw, ModelVertex, Vertex};
 use camera::{Camera, CameraController, CameraUniform};
 use db::DB;
 use egui_wgpu::renderer::ScreenDescriptor;
+use gpu::Gpu;
 use gui::nullus_gui;
 use integration::{Controller, EguiRenderer};
 use light::LightUniform;
 use model::DrawLight;
 use model::DrawModel;
+use std::ops::Deref;
 use std::{
     iter,
     sync::{Arc, RwLock},
@@ -128,29 +130,24 @@ struct Resources {
     pub pipeline_db: RwLock<PipelineDB>,
     pub bind_group_db: RwLock<BindGroupDB>,
     pub model_db: RwLock<ModelDB>,
-    pub config: RwLock<wgpu::SurfaceConfiguration>,
 }
 
 impl Resources {
-    pub fn new(config: wgpu::SurfaceConfiguration) -> Self {
+    pub fn new() -> Self {
         Self {
             pipeline_db: RwLock::default(),
             bind_group_db: RwLock::default(),
             model_db: RwLock::default(),
-            config: RwLock::new(config),
         }
     }
 }
 
 struct Renderer {
-    surface: wgpu::Surface,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    config: wgpu::SurfaceConfiguration,
+    gpu: Arc<Gpu>,
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
     // NEW!
-    window: Window,
+    window: Arc<Window>,
     egui: EguiRenderer,
     camera: Camera,
     camera_uniform: CameraUniform,
@@ -170,66 +167,11 @@ struct Renderer {
 }
 
 impl Renderer {
-    async fn new(window: Window) -> Self {
+    async fn new(window: Arc<Window>, gpu: Arc<Gpu>) -> Self {
+
+        let device = &gpu.device;
+
         let size = window.inner_size();
-
-        // The instance is a handle to our GPU
-        // BackendBit::PRIMARY => Vulkan + Metal + DX12 + Browser WebGPU
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
-
-        // # Safety
-        //
-        // The surface needs to live as long as the window that created it.
-        // State owns the window so this should be safe.
-        let surface = unsafe { instance.create_surface(&window) }.unwrap();
-
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
-            .await
-            .unwrap();
-
-        let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: None,
-                    features: wgpu::Features::empty(),
-                    // WebGL doesn't support all of wgpu's features, so if
-                    // we're building for the web we'll have to disable some.
-                    limits: wgpu::Limits::default(),
-                },
-                None, // Trace path
-            )
-            .await
-            .unwrap();
-
-        let surface_caps = surface.get_capabilities(&adapter);
-        // Shader code in this tutorial assumes an Srgb surface texture. Using a different
-        // one will result all the colors comming out darker. If you want to support non
-        // Srgb surfaces, you'll need to account for that when drawing to the frame.
-        let surface_format = surface_caps
-            .formats
-            .iter()
-            .copied()
-            .find(|f| f.is_srgb())
-            .unwrap_or(surface_caps.formats[0]);
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface_format,
-            width: size.width,
-            height: size.height,
-            present_mode: surface_caps.present_modes[0],
-            alpha_mode: surface_caps.alpha_modes[0],
-            view_formats: vec![],
-        };
-
-        surface.configure(&device, &config);
 
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -415,10 +357,9 @@ impl Renderer {
             &window,       // winit Window
         );
 
-        let obj_model =
-            resource::load_model("cube.obj", &device, &queue, &texture_bind_group_layout)
-                .await
-                .unwrap();
+        let obj_model = resource::load_model("cube.obj", &gpu, &texture_bind_group_layout)
+            .await
+            .unwrap();
 
         let model_db = ModelDB::default();
         let mut bind_group_db = BindGroupDB::default();
@@ -434,11 +375,8 @@ impl Renderer {
         });
 
         Self {
+            gpu,
             depth_texture,
-            surface,
-            device,
-            queue,
-            config,
             size,
             render_pipeline,
             window,
@@ -467,12 +405,19 @@ impl Renderer {
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
             self.size = new_size;
-            self.config.width = new_size.width;
-            self.config.height = new_size.height;
-            self.surface.configure(&self.device, &self.config);
-            self.camera.aspect = self.config.width as f32 / self.config.height as f32;
+
+            let device = &self.gpu.device;
+
+            let mut config_write = self.gpu.get_config_mut();
+            let surface = &self.gpu.surface;
+
+            config_write.width = new_size.width;
+            config_write.height = new_size.height;
+
+            surface.configure(device, &config_write);
+            self.camera.aspect = config_write.width as f32 / config_write.height as f32;
             self.depth_texture =
-                texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
+                texture::Texture::create_depth_texture(device, &config_write, "depth_texture");
         }
     }
 
@@ -492,13 +437,16 @@ impl Renderer {
         // Update the light
         let old_position: nalgebra::Vector3<_> = self.light_uniform.position.into();
         let isom = na::Isometry3::new(old_position, *na::Vector3::y_axis());
+
+        let queue = &self.gpu.queue;
+
         self.light_uniform.position = isom.translation.into();
-        self.queue.write_buffer(
+        queue.write_buffer(
             &self.light_buffer,
             0,
             bytemuck::cast_slice(&[self.light_uniform]),
         );
-        self.queue.write_buffer(
+        queue.write_buffer(
             &self.camera_buffer,
             0,
             bytemuck::cast_slice(&[self.camera_uniform]),
@@ -506,7 +454,7 @@ impl Renderer {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let output = self.surface.get_current_texture()?;
+        let output = self.gpu.surface.get_current_texture()?;
         let view = output.texture.create_view(&TextureViewDescriptor {
             label: None,
             format: None,
@@ -521,11 +469,13 @@ impl Renderer {
         let camera_bind_group_entry = self.bind_group_db.get(self.camera_bind_group);
         let camera_bind_group = camera_bind_group_entry.bind_group.as_ref().unwrap();
 
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder"),
-            });
+        let (device, queue) = (&self.gpu.device, &self.gpu.queue);
+
+        let config = self.gpu.get_config();
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Render Encoder"),
+        });
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -588,13 +538,13 @@ impl Renderer {
         }
 
         let screen_descriptor = ScreenDescriptor {
-            size_in_pixels: [self.config.width, self.config.height],
+            size_in_pixels: [config.width, config.height],
             pixels_per_point: self.window().scale_factor() as f32,
         };
 
         self.egui.draw(
-            &self.device,
-            &self.queue,
+            device,
+            &queue,
             &mut encoder,
             &self.window,
             &view,
@@ -602,61 +552,9 @@ impl Renderer {
             |ui| nullus_gui(ui, &self.camera_controller),
         );
 
-        self.queue.submit(iter::once(encoder.finish()));
+        queue.submit(iter::once(encoder.finish()));
         output.present();
 
         Ok(())
     }
-}
-
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
-pub async fn run() {
-    let event_loop = EventLoop::new().unwrap();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
-
-    // State::new uses async code, so we're going to wait for it to finish
-    let mut state = Renderer::new(window).await;
-
-    let _ = event_loop.run(move |event, ewlt| match event {
-        Event::WindowEvent {
-            ref event,
-            window_id,
-        } if window_id == state.window().id() => {
-            if !state.input(event) {
-                match event {
-                    WindowEvent::CloseRequested
-                    | WindowEvent::KeyboardInput {
-                        event:
-                            KeyEvent {
-                                logical_key: Key::Named(NamedKey::Escape),
-                                ..
-                            },
-                        ..
-                    } => ewlt.exit(),
-                    WindowEvent::Resized(physical_size) => {
-                        state.resize(*physical_size);
-                    }
-                    WindowEvent::RedrawRequested => {
-                        state.update();
-
-                        match state.render() {
-                            Ok(_) => {}
-                            // Reconfigure the surface if it's lost or outdated
-                            Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-                                state.resize(state.size)
-                            }
-                            // The system is out of memory, we should probably quit
-                            Err(wgpu::SurfaceError::OutOfMemory) => ewlt.exit(),
-                            // We're ignoring timeouts
-                            Err(wgpu::SurfaceError::Timeout) => log::warn!("Surface timeout"),
-                        }
-                    }
-
-                    _ => {}
-                };
-                state.egui.handle_input(&mut state.window, &event);
-            }
-        }
-        _ => {}
-    });
 }
