@@ -80,11 +80,12 @@ impl App {
                             ..
                         } => ewlt.exit(),
                         WindowEvent::Resized(physical_size) => {
+                            log::info!("Resized");
                             renderer.resize(*physical_size);
                         }
                         WindowEvent::RedrawRequested => {
+                            log::info!("Redraw");
                             renderer.update();
-
                             match renderer.render() {
                                 Ok(_) => {}
                                 // Reconfigure the surface if it's lost or outdated
@@ -97,10 +98,9 @@ impl App {
                                 Err(wgpu::SurfaceError::Timeout) => log::warn!("Surface timeout"),
                             }
                         }
-                        WindowEvent::DroppedFile(path) => {
-                            todo!("Handle File drop")
+                        _ => {
+                            log::info!("Other");
                         }
-                        _ => {}
                     };
                     renderer.egui.handle_input(&mut renderer.window, &event);
                 }

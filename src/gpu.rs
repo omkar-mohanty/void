@@ -1,7 +1,6 @@
 use std::{
     cell::OnceCell,
     collections::BTreeMap,
-    ops::Deref,
     sync::{atomic::AtomicUsize, Arc, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
@@ -14,8 +13,8 @@ pub struct Gpu {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub surface: Arc<wgpu::Surface>,
-    window: Arc<Window>,
     config: Arc<RwLock<wgpu::SurfaceConfiguration>>,
+    window: Arc<Window>,
     current_texture_view: RwLock<OnceCell<wgpu::SurfaceTexture>>,
     cmds: RwLock<BTreeMap<usize, wgpu::CommandBuffer>>,
 }
@@ -79,6 +78,8 @@ impl Gpu {
 
         surface.configure(&device, &config);
 
+        let config = Arc::new(RwLock::new(config));
+
         Self {
             device,
             queue,
@@ -86,7 +87,7 @@ impl Gpu {
             cmds: RwLock::new(BTreeMap::default()),
             current_texture_view: RwLock::new(OnceCell::new()),
             window,
-            config: Arc::new(RwLock::new(config)),
+            config,
         }
     }
 

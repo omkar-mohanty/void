@@ -1,5 +1,7 @@
 use nalgebra as na;
 
+use crate::gpu::Gpu;
+
 pub struct Camera {
     pub eye: na::Point3<f32>,
     pub target: na::Point3<f32>,
@@ -11,7 +13,9 @@ pub struct Camera {
 }
 
 impl Camera {
-    pub fn new(width: f32, height: f32) -> Self {
+    pub fn new(gpu: &Gpu) -> Self {
+        let config = gpu.get_config();
+        let (height, width) = (config.height as f32, config.width as f32);
         Camera {
             // position the camera 1 unit up and 2 units back
             // +z is out of the screen

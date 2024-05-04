@@ -22,29 +22,27 @@ use integration::{Controller, EguiRenderer};
 use light::LightUniform;
 use model::DrawLight;
 use model::DrawModel;
-use std::ops::Deref;
 use std::{
     iter,
     sync::{Arc, RwLock},
 };
+use texture::Texture;
 use wgpu::util::DeviceExt;
 use wgpu::TextureViewDescriptor;
-use winit::{
-    event::*,
-    event_loop::EventLoop,
-    keyboard::{Key, NamedKey},
-    window::{Window, WindowBuilder},
-};
+use winit::{event::*, window::Window};
 
 fn create_render_pipeline(
-    device: &wgpu::Device,
+    gpu: &Gpu,
     layout: &wgpu::PipelineLayout,
-    color_format: wgpu::TextureFormat,
     depth_format: Option<wgpu::TextureFormat>,
     vertex_layouts: &[wgpu::VertexBufferLayout],
     shader: wgpu::ShaderModuleDescriptor,
 ) -> wgpu::RenderPipeline {
+    let device = &gpu.device;
     let shader = device.create_shader_module(shader);
+    let config = gpu.get_config();
+
+    let color_format = config.format;
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("Render Pipeline"),
@@ -156,7 +154,7 @@ struct Renderer {
     camera_controller: Arc<RwLock<CameraController>>,
     instance_buffer: wgpu::Buffer,
     instances: Vec<Instance>,
-    depth_texture: texture::Texture,
+    depth_texture: Option<texture::Texture>,
     obj_model: model::Model,
     light_uniform: LightUniform,
     light_buffer: wgpu::Buffer,
@@ -168,7 +166,6 @@ struct Renderer {
 
 impl Renderer {
     async fn new(window: Arc<Window>, gpu: Arc<Gpu>) -> Self {
-
         let device = &gpu.device;
 
         let size = window.inner_size();
@@ -198,7 +195,7 @@ impl Renderer {
                 ],
             });
 
-        let camera = Camera::new(config.width as f32, config.height as f32);
+        let camera = Camera::new(&gpu);
 
         let mut camera_uniform = CameraUniform::new();
         camera_uniform.update_view_proj(&camera);
@@ -237,7 +234,6 @@ impl Renderer {
         let instances = (0..NUM_INSTANCES_PER_ROW)
             .flat_map(|z| {
                 (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                    use nalgebra as na;
                     let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
                     let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
 
@@ -298,8 +294,7 @@ impl Renderer {
             }],
         });
 
-        let depth_texture =
-            texture::Texture::create_depth_texture(&device, &config, "Depth Texture");
+        let depth_texture = None;
 
         // lib.rs
         let light_render_pipeline = {
@@ -313,9 +308,8 @@ impl Renderer {
                 source: wgpu::ShaderSource::Wgsl(include_str!("light.wgsl").into()),
             };
             create_render_pipeline(
-                &device,
+                &gpu,
                 &layout,
-                config.format,
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[ModelVertex::desc()],
                 shader,
@@ -339,9 +333,8 @@ impl Renderer {
                 source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
             };
             create_render_pipeline(
-                &device,
+                &gpu,
                 &render_pipeline_layout,
-                config.format,
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[model::ModelVertex::desc(), InstanceRaw::desc()],
                 shader,
@@ -350,11 +343,10 @@ impl Renderer {
 
         // ...
         let egui = EguiRenderer::new(
-            &device,       // wgpu Device
-            config.format, // TextureFormat
-            None,          // this can be None
-            1,             // samples
-            &window,       // winit Window
+            &gpu,    // wgpu Device
+            None,    // this can be None
+            1,       // samples
+            &window, // winit Window
         );
 
         let obj_model = resource::load_model("cube.obj", &gpu, &texture_bind_group_layout)
@@ -416,8 +408,11 @@ impl Renderer {
 
             surface.configure(device, &config_write);
             self.camera.aspect = config_write.width as f32 / config_write.height as f32;
-            self.depth_texture =
-                texture::Texture::create_depth_texture(device, &config_write, "depth_texture");
+            self.depth_texture = Some(texture::Texture::create_depth_texture(
+                &device,
+                &config_write,
+                "depth_texture",
+            ));
         }
     }
 
@@ -453,25 +448,104 @@ impl Renderer {
         );
     }
 
-    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let output = self.gpu.surface.get_current_texture()?;
-        let view = output.texture.create_view(&TextureViewDescriptor {
-            label: None,
-            format: None,
-            dimension: None,
-            aspect: wgpu::TextureAspect::All,
-            base_mip_level: 0,
-            mip_level_count: None,
-            base_array_layer: 0,
-            array_layer_count: None,
-        });
+    pub fn render_models<'a>(
+        &mut self,
+        models: impl Iterator<Item = &'a ModelEntry>,
+    ) -> Result<(), wgpu::SurfaceError> {
+        let view = self.gpu.get_current_view();
+        let config = self.gpu.get_config();
+        let device = &self.gpu.device;
 
         let camera_bind_group_entry = self.bind_group_db.get(self.camera_bind_group);
         let camera_bind_group = camera_bind_group_entry.bind_group.as_ref().unwrap();
 
+        let config = self.gpu.get_config();
+
+        if let None = self.depth_texture {
+            self.depth_texture = Some(Texture::create_depth_texture(
+                device,
+                &config,
+                "Depth Texture",
+            ));
+        }
+
+        let depth_tex = self.depth_texture.as_ref().unwrap();
+
+        let mut encoder = self.gpu.create_cmd_encoder();
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &depth_tex.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            for entry in models {
+                let model = &entry.model;
+                let instances = &entry.instances;
+                let instane_buffer = &entry.instance_buffer;
+
+                render_pass.set_pipeline(&self.light_render_pipeline);
+                render_pass.draw_light_model(model, camera_bind_group, &self.light_bind_group);
+
+                render_pass.set_pipeline(&self.render_pipeline);
+                render_pass.set_vertex_buffer(1, instane_buffer.slice(..));
+
+                render_pass.draw_model_instanced(
+                    model,
+                    0..instances.len() as u32,
+                    camera_bind_group,
+                    &self.light_bind_group,
+                )
+            }
+        }
+
+        Ok(())
+    }
+
+    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        let output = self.gpu.surface.get_current_texture()?;
+        let view = output
+            .texture
+            .create_view(&TextureViewDescriptor::default());
+
         let (device, queue) = (&self.gpu.device, &self.gpu.queue);
 
+        let camera_bind_group_entry = self.bind_group_db.get(self.camera_bind_group);
+        let camera_bind_group = camera_bind_group_entry.bind_group.as_ref().unwrap();
+
         let config = self.gpu.get_config();
+
+        if let None = self.depth_texture {
+            self.depth_texture = Some(Texture::create_depth_texture(
+                device,
+                &config,
+                "Depth Texture",
+            ));
+        }
+
+        let depth_tex = self.depth_texture.as_ref().unwrap();
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Render Encoder"),
@@ -494,7 +568,7 @@ impl Renderer {
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_texture.view,
+                    view: &depth_tex.view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: wgpu::StoreOp::Store,

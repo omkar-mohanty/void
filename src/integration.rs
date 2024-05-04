@@ -22,12 +22,14 @@ pub struct EguiRenderer {
 
 impl EguiRenderer {
     pub fn new(
-        device: &Device,
-        output_color_format: TextureFormat,
+        gpu: &Gpu,
         output_depth_format: Option<TextureFormat>,
         msaa_samples: u32,
         window: &Window,
     ) -> EguiRenderer {
+        let device = &gpu.device;
+        let config = gpu.get_config();
+        let output_color_format = config.format;
         let egui_context = Context::default();
         let id = egui_context.viewport_id();
 
@@ -46,7 +48,7 @@ impl EguiRenderer {
 
         // egui_state.set_pixels_per_point(window.scale_factor() as f32);
         let egui_renderer = egui_wgpu::Renderer::new(
-            device,
+            &device,
             output_color_format,
             output_depth_format,
             msaa_samples,
