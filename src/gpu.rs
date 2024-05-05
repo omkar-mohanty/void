@@ -13,7 +13,7 @@ pub struct Gpu {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub surface: Arc<wgpu::Surface>,
-    config: Arc<RwLock<wgpu::SurfaceConfiguration>>,
+    pub config: Arc<RwLock<wgpu::SurfaceConfiguration>>,
     window: Arc<Window>,
     current_texture_view: RwLock<OnceCell<wgpu::SurfaceTexture>>,
     cmds: RwLock<BTreeMap<usize, wgpu::CommandBuffer>>,
@@ -89,6 +89,11 @@ impl Gpu {
             window,
             config,
         }
+    }
+
+    pub fn get_config_read<T, F: FnOnce(&wgpu::SurfaceConfiguration) -> T>(&self, func: F) -> T {
+        let config = self.config.read().unwrap();
+        func(&config)
     }
 
     pub fn create_cmd_encoder(&self) -> wgpu::CommandEncoder {

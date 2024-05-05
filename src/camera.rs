@@ -14,8 +14,8 @@ pub struct Camera {
 
 impl Camera {
     pub fn new(gpu: &Gpu) -> Self {
-        let config = gpu.get_config();
-        let (height, width) = (config.height as f32, config.width as f32);
+        let (height, width) =
+            gpu.get_config_read(|config| (config.height as f32, config.width as f32));
         Camera {
             // position the camera 1 unit up and 2 units back
             // +z is out of the screen
@@ -56,10 +56,9 @@ pub struct CameraUniform {
 
 impl CameraUniform {
     pub fn new() -> Self {
-        use cgmath::SquareMatrix;
         Self {
             view_position: [0.0; 4],
-            view_proj: cgmath::Matrix4::identity().into(),
+            view_proj: na::Matrix4::identity().into(),
         }
     }
 
@@ -75,6 +74,18 @@ pub struct CameraController {
     is_backward_pressed: bool,
     is_left_pressed: bool,
     is_right_pressed: bool,
+}
+
+impl Default for CameraController {
+    fn default() -> Self {
+        Self {
+            speed: 0.2,
+            is_forward_pressed: false,
+            is_backward_pressed: false,
+            is_left_pressed: false,
+            is_right_pressed: false,
+        }
+    }
 }
 
 impl CameraController {

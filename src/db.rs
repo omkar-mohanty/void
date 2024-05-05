@@ -1,64 +1,24 @@
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::sync::Arc;
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    OnceLock, RwLock,
-};
-
-static ID_MANAGER: OnceLock<IdManager> = OnceLock::new();
-
-struct IdManager {
-    current_id: AtomicUsize,
-    ids: RwLock<HashMap<Id, AtomicUsize>>,
-}
-
-impl Default for IdManager {
-    fn default() -> Self {
-        Self {
-            current_id: AtomicUsize::new(0),
-            ids: RwLock::new(HashMap::default()),
-        }
-    }
-}
-
-impl IdManager {
-    pub fn init() {
-        ID_MANAGER.get_or_init(|| Self::default());
-    }
-    pub fn new_entry() -> Id {
-        let mgr = ID_MANAGER.get().unwrap();
-        let id = Id(mgr.current_id.fetch_add(1, Ordering::Relaxed));
-        mgr.ids.write().unwrap().insert(id, AtomicUsize::new(0));
-        id
-    }
-    pub fn next_id(id: Id) -> Id {
-        let mgr = ID_MANAGER.get().unwrap();
-        let ids_write = mgr.ids.write().unwrap();
-        let id = ids_write.get(&id).unwrap();
-        Id(id.fetch_add(1, Ordering::Relaxed))
-    }
-}
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct DB<T> {
     pub data: HashMap<Id, T>,
-    id: Id,
+    next_id: AtomicUsize,
 }
 
 impl<T> Default for DB<T> {
     fn default() -> Self {
-        IdManager::init();
-        let id = IdManager::new_entry();
         Self {
             data: HashMap::new(),
-            id,
+            next_id: AtomicUsize::new(0),
         }
     }
 }
 
 impl<T> DB<T> {
     pub fn insert(&mut self, val: T) -> Id {
-        let id = IdManager::next_id(self.id);
+        let id = Id(self.next_id.fetch_add(1, Ordering::Relaxed));
         self.data.insert(id, val);
         id
     }
@@ -68,9 +28,8 @@ impl<T> DB<T> {
         item.unwrap()
     }
 
-    pub fn get_mut<'a>(&'a mut self, id: Id) -> &'a mut T {
-        let item = self.data.get_mut(&id);
-        item.unwrap()
+    pub fn get_all<'a>(&'a self) -> impl Iterator<Item = &'a T> {
+        self.data.values()
     }
 }
 
@@ -86,16 +45,6 @@ impl Display for Id {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    struct MockRpass {
-        bind_group: u32,
-    }
-
-    impl MockRpass {
-        fn set_bind_group(&mut self, group: u32) {
-            self.bind_group = group;
-        }
-    }
 
     #[test]
     fn test_db() {

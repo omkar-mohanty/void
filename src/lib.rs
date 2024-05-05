@@ -12,23 +12,18 @@ mod resource;
 mod texture;
 
 use crate::db::Id;
-use crate::model::{Instance, InstanceRaw, ModelVertex, Vertex};
+use crate::model::{InstanceRaw, ModelVertex, Vertex};
+
 use camera::{Camera, CameraController, CameraUniform};
 use db::DB;
-use egui_wgpu::renderer::ScreenDescriptor;
 use gpu::Gpu;
-use gui::nullus_gui;
-use integration::{Controller, EguiRenderer};
+use integration::Controller;
 use light::LightUniform;
 use model::DrawLight;
 use model::DrawModel;
-use std::{
-    iter,
-    sync::{Arc, RwLock},
-};
+use std::sync::{Arc, RwLock};
 use texture::Texture;
 use wgpu::util::DeviceExt;
-use wgpu::TextureViewDescriptor;
 use winit::{event::*, window::Window};
 
 fn create_render_pipeline(
@@ -92,8 +87,6 @@ fn create_render_pipeline(
     })
 }
 
-const NUM_INSTANCES_PER_ROW: u32 = 10;
-
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
@@ -142,30 +135,24 @@ impl Resources {
 
 struct Renderer {
     gpu: Arc<Gpu>,
+    window: Arc<Window>,
+    camera_controller: Arc<RwLock<CameraController>>,
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
-    // NEW!
-    window: Arc<Window>,
-    egui: EguiRenderer,
     camera: Camera,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: Id,
-    camera_controller: Arc<RwLock<CameraController>>,
-    instance_buffer: wgpu::Buffer,
-    instances: Vec<Instance>,
     depth_texture: Option<texture::Texture>,
-    obj_model: model::Model,
     light_uniform: LightUniform,
     light_buffer: wgpu::Buffer,
     light_bind_group: wgpu::BindGroup,
     light_render_pipeline: wgpu::RenderPipeline,
-    model_db: ModelDB,
     bind_group_db: BindGroupDB,
 }
 
 impl Renderer {
-    async fn new(window: Arc<Window>, gpu: Arc<Gpu>) -> Self {
+    async fn new(window: Arc<Window>, gpu: Arc<Gpu>, camera_controller: Arc<RwLock<CameraController>>) -> Self {
         let device = &gpu.device;
 
         let size = window.inner_size();
@@ -228,33 +215,6 @@ impl Renderer {
                 resource: camera_buffer.as_entire_binding(),
             }],
             label: Some("camera_bind_group"),
-        });
-
-        const SPACE_BETWEEN: f32 = 3.0;
-        let instances = (0..NUM_INSTANCES_PER_ROW)
-            .flat_map(|z| {
-                (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                    let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-                    let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-
-                    let position = na::Vector3::new(x, 0.0, z);
-
-                    let isometry = if position == na::Vector3::zeros() {
-                        na::Isometry3::new(position, *na::Vector3::y_axis())
-                    } else {
-                        na::Isometry3::new(position, position)
-                    };
-
-                    Instance { isometry }
-                })
-            })
-            .collect::<Vec<_>>();
-
-        let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
-        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Instance Buffer"),
-            contents: bytemuck::cast_slice(&instance_data),
-            usage: wgpu::BufferUsages::VERTEX,
         });
 
         let light_uniform = light::LightUniform {
@@ -341,25 +301,7 @@ impl Renderer {
             )
         };
 
-        // ...
-        let egui = EguiRenderer::new(
-            &gpu,    // wgpu Device
-            None,    // this can be None
-            1,       // samples
-            &window, // winit Window
-        );
-
-        let obj_model = resource::load_model("cube.obj", &gpu, &texture_bind_group_layout)
-            .await
-            .unwrap();
-
-        let model_db = ModelDB::default();
         let mut bind_group_db = BindGroupDB::default();
-
-        let texture_bind_group = bind_group_db.insert(BindGroupEntry {
-            bind_group: None,
-            layout: texture_bind_group_layout,
-        });
 
         let camera_bind_group = bind_group_db.insert(BindGroupEntry {
             bind_group: Some(camera_bind_group),
@@ -372,20 +314,15 @@ impl Renderer {
             size,
             render_pipeline,
             window,
-            egui,
             camera,
             camera_uniform,
             camera_bind_group,
             camera_buffer,
-            instance_buffer,
-            instances,
-            obj_model,
             light_buffer,
             light_uniform,
             light_bind_group,
             light_render_pipeline,
-            camera_controller: Arc::new(RwLock::new(CameraController::new(1.0))),
-            model_db,
+            camera_controller,
             bind_group_db,
         }
     }
@@ -427,6 +364,7 @@ impl Renderer {
             .write()
             .unwrap()
             .update_camera(&mut self.camera);
+
         self.camera_uniform.update_view_proj(&self.camera);
 
         // Update the light
@@ -453,7 +391,6 @@ impl Renderer {
         models: impl Iterator<Item = &'a ModelEntry>,
     ) -> Result<(), wgpu::SurfaceError> {
         let view = self.gpu.get_current_view();
-        let config = self.gpu.get_config();
         let device = &self.gpu.device;
 
         let camera_bind_group_entry = self.bind_group_db.get(self.camera_bind_group);
@@ -480,12 +417,7 @@ impl Renderer {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -521,114 +453,7 @@ impl Renderer {
             }
         }
 
-        Ok(())
-    }
-
-    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let output = self.gpu.surface.get_current_texture()?;
-        let view = output
-            .texture
-            .create_view(&TextureViewDescriptor::default());
-
-        let (device, queue) = (&self.gpu.device, &self.gpu.queue);
-
-        let camera_bind_group_entry = self.bind_group_db.get(self.camera_bind_group);
-        let camera_bind_group = camera_bind_group_entry.bind_group.as_ref().unwrap();
-
-        let config = self.gpu.get_config();
-
-        if let None = self.depth_texture {
-            self.depth_texture = Some(Texture::create_depth_texture(
-                device,
-                &config,
-                "Depth Texture",
-            ));
-        }
-
-        let depth_tex = self.depth_texture.as_ref().unwrap();
-
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Render Encoder"),
-        });
-
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &depth_tex.view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
-
-            render_pass.set_pipeline(&self.light_render_pipeline);
-            render_pass.draw_light_model(
-                &self.obj_model,
-                camera_bind_group,
-                &self.light_bind_group,
-            );
-
-            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-            render_pass.set_pipeline(&self.render_pipeline);
-
-            for (_, entry) in self.model_db.data.iter() {
-                let model = &entry.model;
-                let instances = &entry.instances;
-                let instane_buffer = &entry.instance_buffer;
-
-                render_pass.set_vertex_buffer(1, instane_buffer.slice(..));
-                render_pass.draw_model_instanced(
-                    model,
-                    0..instances.len() as u32,
-                    camera_bind_group,
-                    &self.light_bind_group,
-                )
-            }
-
-            render_pass.draw_model_instanced(
-                &self.obj_model,
-                0..self.instances.len() as u32,
-                camera_bind_group,
-                &self.light_bind_group,
-            );
-        }
-
-        let screen_descriptor = ScreenDescriptor {
-            size_in_pixels: [config.width, config.height],
-            pixels_per_point: self.window().scale_factor() as f32,
-        };
-
-        self.egui.draw(
-            device,
-            &queue,
-            &mut encoder,
-            &self.window,
-            &view,
-            screen_descriptor,
-            |ui| nullus_gui(ui, &self.camera_controller),
-        );
-
-        queue.submit(iter::once(encoder.finish()));
-        output.present();
-
+        self.gpu.submit_cmd(encoder.finish());
         Ok(())
     }
 }

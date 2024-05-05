@@ -1,5 +1,5 @@
 [package]
-name = "nulus"
+name = "void"
 version = "0.1.0"
 edition = "2021"
 
@@ -17,12 +17,11 @@ log = "0.4.20"
 egui-winit = "0.25.0"
 egui = "0.25.0"
 tokio = { version = "1.36.0", features = ["full"] }
-cgmath = "0.18"
 nalgebra = "0.32.5"
 tobj = { version = "3.2.1", features = [
     "async",
 ]}
- 
+ futures = "0.3.30"
 [dependencies.image]
 version = "0.24"
 default-features = false
