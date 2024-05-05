@@ -1,6 +1,10 @@
 use nalgebra as na;
 
 use crate::gpu::Gpu;
+use winit::{
+    event::{ElementState, KeyEvent},
+    keyboard::Key::{self, Character},
+};
 
 pub struct Camera {
     pub eye: na::Point3<f32>,
@@ -93,11 +97,36 @@ impl CameraController {
         }
     }
 
-    pub fn process_events(&mut self, ctx: &egui::Context) {
-        ctx.input(|i| self.is_forward_pressed = i.key_pressed(egui::Key::W));
-        ctx.input(|i| self.is_left_pressed = i.key_pressed(egui::Key::A));
-        ctx.input(|i| self.is_right_pressed = i.key_pressed(egui::Key::D));
-        ctx.input(|i| self.is_backward_pressed = i.key_pressed(egui::Key::S));
+    pub fn process_key(&mut self, key_event: &KeyEvent) {
+        let KeyEvent {
+            physical_key,
+            logical_key,
+            text,
+            location,
+            state,
+            repeat,
+            ..
+        } = key_event;
+        self.process_events(&logical_key, state.is_pressed());
+    }
+
+    pub fn process_events(&mut self, key: &Key, pressed: bool) {
+        use Key::*;
+        match key {
+            Character(W) => {
+                self.is_forward_pressed = pressed;
+            }
+            Character(A) => {
+                self.is_left_pressed = pressed;
+            }
+            Character(S) => {
+                self.is_backward_pressed = pressed;
+            }
+            Character(D) => {
+                self.is_right_pressed = pressed;
+            }
+            _ => {}
+        }
     }
 
     pub fn update_camera(&self, camera: &mut Camera) {

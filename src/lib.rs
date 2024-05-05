@@ -91,9 +91,9 @@ fn create_render_pipeline(
 use wasm_bindgen::prelude::*;
 
 impl Controller for Arc<RwLock<CameraController>> {
-    fn process_events(&self, ctx: &egui::Context) {
+    fn process_events(&self, ctx: &KeyEvent) {
         let mut camera_write = self.write().unwrap();
-        camera_write.process_events(ctx);
+        camera_write.process_key(ctx);
     }
 }
 

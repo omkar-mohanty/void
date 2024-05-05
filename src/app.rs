@@ -5,9 +5,10 @@ use std::{
 };
 
 use crate::{
+    camera::CameraController,
     gpu::Gpu,
     gui::void_gui,
-    io::{GuiRenderer, Ui},
+    io::{GuiRenderer, IoEngine, Ui},
     model, resource, texture, ModelEntry, Renderer, Resources,
 };
 use egui::Context;
@@ -23,7 +24,7 @@ pub struct App {
     resources: Arc<Resources>,
     gpu: Arc<Gpu>,
     renderer: Renderer,
-    gui_renderer: GuiRenderer,
+    io_engine: IoEngine<Arc<RwLock<CameraController>>>,
 }
 
 #[derive(Default)]
@@ -42,20 +43,24 @@ impl App {
         let gpu = Arc::new(Gpu::new(Arc::clone(&window)).await);
         let gui = Gui::default();
 
+        let controller = Arc::new(RwLock::new(CameraController::default()));
+
         let renderer = Renderer::new(
             Arc::clone(&window),
             Arc::clone(&gpu),
-            Arc::clone(&gui.camera_controller),
+            Arc::clone(&controller),
         )
         .await;
+
         let resources = Arc::new(Resources::new());
-        let gui_renderer = GuiRenderer::new(Arc::clone(&gpu), None, 1, window, gui);
+        let gui_renderer = GuiRenderer::new(Arc::clone(&gpu), None, 1, Arc::clone(&window), gui);
+        let io_engine = IoEngine::new(Arc::clone(&gpu),Arc::clone(& resources), Arc::clone(&window),gui_renderer, controller);
 
         Self {
             renderer,
             resources,
             gpu,
-            gui_renderer,
+            io_engine,
         }
     }
 
@@ -126,8 +131,6 @@ impl App {
                                 Err(wgpu::SurfaceError::Timeout) => log::warn!("Surface timeout"),
                             };
 
-                            self.gui_renderer.render_ui();
-                            self.gpu.finish();
                         }
                         WindowEvent::DroppedFile(path) => {
                             match futures::executor::block_on(self.handle_file_drop(path)) {
@@ -139,8 +142,8 @@ impl App {
                             log::info!("Other");
                         }
                     };
-                    self.gui_renderer
-                        .handle_input(&mut self.renderer.window, &event);
+                    self.io_engine.handle_event(event);
+                    self.gpu.finish();
                 }
             }
             _ => {}

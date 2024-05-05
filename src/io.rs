@@ -20,7 +20,7 @@ use winit::event::{KeyEvent, WindowEvent};
 use winit::window::Window;
 
 pub trait Controller {
-    fn process_events(&self, ctx: &egui::Context);
+    fn process_events(&self, ctx: &KeyEvent);
 }
 
 pub trait Ui {
@@ -30,35 +30,45 @@ pub trait Ui {
 pub struct IoEngine<T: Controller> {
     camera_controller: T,
     resources: Arc<Resources>,
+    window: Arc<Window>,
     gui: GuiRenderer,
     gpu: Arc<Gpu>,
 }
 
 impl<T: Controller> IoEngine<T> {
+    pub fn new(
+        gpu: Arc<Gpu>,
+        resources: Arc<Resources>,
+        window: Arc<Window>,
+        gui: GuiRenderer,
+        camera_controller: T,
+    ) -> Self {
+        Self {
+            camera_controller,
+            resources,
+            gui,
+            gpu,
+            window,
+        }
+    }
+
     pub fn handle_event(&mut self, event: &WindowEvent) {
         use WindowEvent::*;
         match event {
-            DroppedFile(path) => {
-                let res = futures::executor::block_on(self.add_model(path));
+            DroppedFile(path) => match futures::executor::block_on(self.add_model(path)) {
+                Ok(()) => log::info!("Added Model"),
+                Err(msg) => log::error!("{msg}"),
+            },
+            KeyboardInput { event, .. } => {
+                self.camera_controller.process_events(&event);
             }
-            KeyboardInput {
-                event:
-                    KeyEvent {
-                        physical_key,
-                        logical_key,
-                        text,
-                        location,
-                        state,
-                        repeat,
-                        ..
-                    },
-                ..
-            } => {}
             RedrawRequested => {
                 self.gui.render_ui();
             }
             _ => {}
-        }
+        };
+
+        self.gui.handle_input(&self.window, event);
     }
 
     pub async fn add_model(&mut self, path: &PathBuf) -> anyhow::Result<()> {
