@@ -5,10 +5,9 @@ use std::{
 };
 
 use crate::{
-    camera::CameraController,
     gpu::Gpu,
-    gui::nullus_gui,
-    integration::{EguiRenderer, Ui},
+    gui::void_gui,
+    io::{GuiRenderer, Ui},
     model, resource, texture, ModelEntry, Renderer, Resources,
 };
 use egui::Context;
@@ -24,17 +23,15 @@ pub struct App {
     resources: Arc<Resources>,
     gpu: Arc<Gpu>,
     renderer: Renderer,
-    gui_renderer: EguiRenderer,
+    gui_renderer: GuiRenderer,
 }
 
 #[derive(Default)]
-struct Gui {
-    camera_controller: Arc<RwLock<CameraController>>,
-}
+struct Gui {}
 
 impl Ui for Gui {
     fn render_ui(&mut self, context: &Context) {
-        nullus_gui(context, &self.camera_controller);
+        void_gui(context);
     }
 }
 
@@ -45,9 +42,14 @@ impl App {
         let gpu = Arc::new(Gpu::new(Arc::clone(&window)).await);
         let gui = Gui::default();
 
-        let renderer = Renderer::new(Arc::clone(&window), Arc::clone(&gpu), Arc::clone(&gui.camera_controller)).await;
+        let renderer = Renderer::new(
+            Arc::clone(&window),
+            Arc::clone(&gpu),
+            Arc::clone(&gui.camera_controller),
+        )
+        .await;
         let resources = Arc::new(Resources::new());
-        let gui_renderer = EguiRenderer::new(Arc::clone(&gpu), None, 1, window, gui);
+        let gui_renderer = GuiRenderer::new(Arc::clone(&gpu), None, 1, window, gui);
 
         Self {
             renderer,

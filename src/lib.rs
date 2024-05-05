@@ -5,7 +5,7 @@ mod camera;
 mod db;
 pub mod gpu;
 mod gui;
-mod integration;
+mod io;
 mod light;
 mod model;
 mod resource;
@@ -17,7 +17,7 @@ use crate::model::{InstanceRaw, ModelVertex, Vertex};
 use camera::{Camera, CameraController, CameraUniform};
 use db::DB;
 use gpu::Gpu;
-use integration::Controller;
+use io::Controller;
 use light::LightUniform;
 use model::DrawLight;
 use model::DrawModel;
@@ -152,7 +152,11 @@ struct Renderer {
 }
 
 impl Renderer {
-    async fn new(window: Arc<Window>, gpu: Arc<Gpu>, camera_controller: Arc<RwLock<CameraController>>) -> Self {
+    async fn new(
+        window: Arc<Window>,
+        gpu: Arc<Gpu>,
+        camera_controller: Arc<RwLock<CameraController>>,
+    ) -> Self {
         let device = &gpu.device;
 
         let size = window.inner_size();

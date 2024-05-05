@@ -32,14 +32,6 @@ pub struct Instance {
     pub isometry: Isometry3<f32>,
 }
 
-impl Instance {
-    pub fn new(translation: Vector3<f32>, rotation: Vector3<f32>) -> Self {
-        Self {
-            isometry: Isometry3::new(translation, rotation),
-        }
-    }
-}
-
 // NEW!
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]

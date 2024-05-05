@@ -1,8 +1,6 @@
 use egui::{Align2, Context};
 
-use crate::integration::Controller;
-
-pub fn nullus_gui(ctx: &Context, controller: &dyn Controller) {
+pub fn void_gui(ctx: &Context) {
     egui::Window::new("Control Plane")
         .default_open(true)
         .resizable(true)
@@ -12,5 +10,4 @@ pub fn nullus_gui(ctx: &Context, controller: &dyn Controller) {
                 println!("Clicked");
             }
         });
-    controller.process_events(ctx);
 }

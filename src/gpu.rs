@@ -14,7 +14,6 @@ pub struct Gpu {
     pub queue: wgpu::Queue,
     pub surface: Arc<wgpu::Surface>,
     pub config: Arc<RwLock<wgpu::SurfaceConfiguration>>,
-    window: Arc<Window>,
     current_texture_view: RwLock<OnceCell<wgpu::SurfaceTexture>>,
     cmds: RwLock<BTreeMap<usize, wgpu::CommandBuffer>>,
 }
@@ -86,7 +85,6 @@ impl Gpu {
             surface,
             cmds: RwLock::new(BTreeMap::default()),
             current_texture_view: RwLock::new(OnceCell::new()),
-            window,
             config,
         }
     }

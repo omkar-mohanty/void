@@ -4,10 +4,19 @@ use egui_wgpu::renderer::ScreenDescriptor;
 use egui_wgpu::Renderer;
 
 use crate::gpu::Gpu;
+use crate::model;
+use crate::resource;
+use crate::texture;
+use crate::ModelEntry;
+use crate::Resources;
+
+use wgpu::util::DeviceExt;
+
 use egui_winit::State;
+use std::path::PathBuf;
 use std::sync::Arc;
 use wgpu::TextureFormat;
-use winit::event::WindowEvent;
+use winit::event::{KeyEvent, WindowEvent};
 use winit::window::Window;
 
 pub trait Controller {
@@ -18,7 +27,67 @@ pub trait Ui {
     fn render_ui(&mut self, context: &Context);
 }
 
-pub struct EguiRenderer {
+pub struct IoEngine<T: Controller> {
+    camera_controller: T,
+    resources: Arc<Resources>,
+    gui: GuiRenderer,
+    gpu: Arc<Gpu>,
+}
+
+impl<T: Controller> IoEngine<T> {
+    pub fn handle_event(&mut self, event: &WindowEvent) {
+        use WindowEvent::*;
+        match event {
+            DroppedFile(path) => {
+                let res = futures::executor::block_on(self.add_model(path));
+            }
+            KeyboardInput {
+                event:
+                    KeyEvent {
+                        physical_key,
+                        logical_key,
+                        text,
+                        location,
+                        state,
+                        repeat,
+                        ..
+                    },
+                ..
+            } => {}
+            RedrawRequested => {
+                self.gui.render_ui();
+            }
+            _ => {}
+        }
+    }
+
+    pub async fn add_model(&mut self, path: &PathBuf) -> anyhow::Result<()> {
+        let path_string = path.display().to_string();
+        let layout = texture::Texture::get_bind_group_layout(&self.gpu);
+        let model = resource::load_model(&path_string, &self.gpu, &layout).await?;
+        let mut model_db = self.resources.model_db.write().unwrap();
+        let device = &self.gpu.device;
+        let instances = vec![model::Instance::default()];
+
+        let instance_data = instances
+            .iter()
+            .map(model::Instance::to_raw)
+            .collect::<Vec<_>>();
+        let model_entry = ModelEntry {
+            instances,
+            instance_buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Model instance"),
+                contents: bytemuck::cast_slice(&instance_data),
+                usage: wgpu::BufferUsages::VERTEX,
+            }),
+            model,
+        };
+        model_db.insert(model_entry);
+        Ok(())
+    }
+}
+
+pub struct GuiRenderer {
     context: Context,
     gpu: Arc<Gpu>,
     state: State,
@@ -27,7 +96,7 @@ pub struct EguiRenderer {
     ui: Box<dyn Ui>,
 }
 
-impl EguiRenderer {
+impl GuiRenderer {
     pub fn new(
         gpu: Arc<Gpu>,
         output_depth_format: Option<TextureFormat>,
@@ -61,7 +130,7 @@ impl EguiRenderer {
             msaa_samples,
         );
 
-        EguiRenderer {
+        GuiRenderer {
             context: egui_context,
             state: egui_state,
             renderer: egui_renderer,
