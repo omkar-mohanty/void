@@ -3,7 +3,9 @@ use nalgebra as na;
 use crate::gpu::Gpu;
 use winit::{
     event::{ElementState, KeyEvent},
-    keyboard::Key::{self, Character},
+    keyboard::{
+        Key::{self, Character}, KeyCode, PhysicalKey
+    },
 };
 
 pub struct Camera {
@@ -98,31 +100,29 @@ impl CameraController {
     }
 
     pub fn process_key(&mut self, key_event: &KeyEvent) {
-        let KeyEvent {
-            physical_key,
-            logical_key,
-            text,
-            location,
+        if let KeyEvent {
             state,
-            repeat,
+            physical_key: PhysicalKey::Code(key_code),
             ..
-        } = key_event;
-        self.process_events(&logical_key, state.is_pressed());
+        } = key_event
+        {
+            self.process_events(&key_code, state.is_pressed());
+        }
     }
 
-    pub fn process_events(&mut self, key: &Key, pressed: bool) {
-        use Key::*;
+    pub fn process_events(&mut self, key: &KeyCode, pressed: bool) {
+        use KeyCode::*;
         match key {
-            Character(W) => {
+            KeyW => {
                 self.is_forward_pressed = pressed;
             }
-            Character(A) => {
+            KeyA => {
                 self.is_left_pressed = pressed;
             }
-            Character(S) => {
+            KeyS => {
                 self.is_backward_pressed = pressed;
             }
-            Character(D) => {
+            KeyD => {
                 self.is_right_pressed = pressed;
             }
             _ => {}

@@ -54,7 +54,13 @@ impl App {
 
         let resources = Arc::new(Resources::new());
         let gui_renderer = GuiRenderer::new(Arc::clone(&gpu), None, 1, Arc::clone(&window), gui);
-        let io_engine = IoEngine::new(Arc::clone(&gpu),Arc::clone(& resources), Arc::clone(&window),gui_renderer, controller);
+        let io_engine = IoEngine::new(
+            Arc::clone(&gpu),
+            Arc::clone(&resources),
+            Arc::clone(&window),
+            gui_renderer,
+            controller,
+        );
 
         Self {
             renderer,
@@ -130,7 +136,6 @@ impl App {
                                 // We're ignoring timeouts
                                 Err(wgpu::SurfaceError::Timeout) => log::warn!("Surface timeout"),
                             };
-
                         }
                         WindowEvent::DroppedFile(path) => {
                             match futures::executor::block_on(self.handle_file_drop(path)) {
