@@ -14,7 +14,7 @@ mod texture;
 use crate::db::Id;
 use crate::model::{InstanceRaw, ModelVertex, Vertex};
 
-use camera::{Camera, CameraController, CameraUniform};
+use camera::{CameraController, CameraUniform, Projection, StaticCamera};
 use db::DB;
 use gpu::Gpu;
 use io::Controller;
@@ -139,7 +139,7 @@ struct Renderer {
     camera_controller: Arc<RwLock<CameraController>>,
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
-    camera: Camera,
+    camera: StaticCamera,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: Id,
@@ -186,10 +186,11 @@ impl Renderer {
                 ],
             });
 
-        let camera = Camera::new(&gpu);
+        let camera = StaticCamera::new();
 
         let mut camera_uniform = CameraUniform::new();
-        camera_uniform.update_view_proj(&camera);
+        let projection = Projection::with_aspect(size.width as f32, size.height as f32);
+        camera_uniform.update_view_projection(&projection, &camera);
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
@@ -348,7 +349,6 @@ impl Renderer {
             config_write.height = new_size.height;
 
             surface.configure(device, &config_write);
-            self.camera.aspect = config_write.width as f32 / config_write.height as f32;
             self.depth_texture = Some(texture::Texture::create_depth_texture(
                 &device,
                 &config_write,
@@ -369,7 +369,14 @@ impl Renderer {
             .unwrap()
             .update_camera(&mut self.camera);
 
-        self.camera_uniform.update_view_proj(&self.camera);
+        let (width, height) = self
+            .gpu
+            .get_config_read(|config| (config.width as f32, config.height as f32));
+
+        let projection = Projection::with_aspect(width, height);
+
+        self.camera_uniform
+            .update_view_projection(&projection, &self.camera);
 
         // Update the light
         let old_position: nalgebra::Vector3<_> = self.light_uniform.position.into();

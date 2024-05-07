@@ -52,6 +52,10 @@ impl<T: Controller> IoEngine<T> {
         }
     }
 
+    pub fn render(&mut self) {
+        self.gui.render_ui();
+    }
+
     pub fn handle_event(&mut self, event: &WindowEvent) {
         use WindowEvent::*;
         match event {
@@ -61,9 +65,6 @@ impl<T: Controller> IoEngine<T> {
             },
             KeyboardInput { event, .. } => {
                 self.camera_controller.process_events(&event);
-            }
-            RedrawRequested => {
-                self.gui.render_ui();
             }
             _ => {}
         };

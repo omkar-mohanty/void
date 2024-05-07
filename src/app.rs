@@ -136,6 +136,8 @@ impl App {
                                 // We're ignoring timeouts
                                 Err(wgpu::SurfaceError::Timeout) => log::warn!("Surface timeout"),
                             };
+                            self.io_engine.render();
+                            self.gpu.finish();
                         }
                         WindowEvent::DroppedFile(path) => {
                             match futures::executor::block_on(self.handle_file_drop(path)) {
@@ -148,7 +150,6 @@ impl App {
                         }
                     };
                     self.io_engine.handle_event(event);
-                    self.gpu.finish();
                 }
             }
             _ => {}
