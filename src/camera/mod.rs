@@ -1,5 +1,5 @@
 use na::Matrix4;
-use winit::event::KeyEvent;
+use winit::event::{Event, WindowEvent};
 
 mod camera;
 mod fps;
@@ -35,7 +35,7 @@ pub trait ICamera {
 }
 
 pub trait IController {
-    fn input(&self, event: &KeyEvent);
+    fn input(&self, event: &Event<()>);
 }
 
 #[derive(bytemuck::Pod, bytemuck::Zeroable, Clone, Copy)]

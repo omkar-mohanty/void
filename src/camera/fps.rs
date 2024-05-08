@@ -1,8 +1,16 @@
+use std::sync::{Arc, RwLock};
+use std::{f32::consts::FRAC_PI_2, time::Duration};
+
+use winit::event::{Event, MouseButton};
 use winit::{
     dpi::PhysicalPosition,
-    event::{ElementState, MouseScrollDelta},
+    event::{ElementState, KeyEvent, MouseScrollDelta, WindowEvent},
     keyboard::{KeyCode, PhysicalKey},
 };
+
+use super::{ICamera, IController};
+
+const SAFE_FRAC_PI_2: f32 = FRAC_PI_2 - 0.001;
 
 pub struct FpsCamera {
     positon: na::Point3<f32>,
@@ -17,8 +25,8 @@ pub struct FpsController {
     amount_backward: f32,
     amount_up: f32,
     amount_down: f32,
-    rotate_horizontal: f32,
-    rotate_vertical: f32,
+    rotate_horizontal: f64,
+    rotate_vertical: f64,
     scroll: f32,
     speed: f32,
     sensitivity: f32,
@@ -71,7 +79,7 @@ impl FpsController {
         }
     }
 
-    pub fn process_mouse(&mut self, mouse_dx: f32, mouse_dy: f32) {
+    pub fn process_mouse(&mut self, mouse_dx: f64, mouse_dy: f64) {
         self.rotate_horizontal = mouse_dx;
         self.rotate_vertical = mouse_dy;
     }
@@ -80,7 +88,84 @@ impl FpsController {
         use MouseScrollDelta::*;
         self.scroll = -match mouse_delta {
             LineDelta(_, scroll) => scroll * 100.0,
-            PixelDelta(PhysicalPosition {  y: scroll, .. }) => *scroll as f32
+            PixelDelta(PhysicalPosition { y: scroll, .. }) => *scroll as f32,
+        }
+    }
+
+    pub fn update_camera(&mut self, camera: &mut FpsCamera, dt: Duration) {
+        let dt = dt.as_secs_f32();
+        let (yaw_sin, yaw_cos) = camera.yaw.sin_cos();
+        let forward = na::Vector3::new(yaw_cos, 0.0, yaw_sin).normalize();
+        let right = na::Vector3::new(-yaw_sin, 0.0, yaw_cos).normalize();
+        camera.positon += forward * (self.amount_forward - self.amount_backward) * self.speed * dt;
+        camera.positon += right * (self.amount_right - self.amount_left) * self.speed * dt;
+
+        let (pitch_cos, pitch_sin) = camera.pitch.sin_cos();
+        let scrollward = na::Vector3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin);
+        camera.positon += scrollward * self.scroll * self.speed * self.sensitivity * dt;
+        self.scroll = 0.0;
+
+        camera.positon.y = (self.amount_up - self.amount_down) * self.speed * dt;
+
+        camera.yaw += self.rotate_horizontal * self.sensitivity * dt;
+        camera.pitch += -self.rotate_vertical * self.sensitivity * dt;
+
+        self.rotate_vertical = 0.0;
+        self.rotate_horizontal = 0.0;
+
+        if camera.pitch < SAFE_FRAC_PI_2 {
+            camera.pitch = -SAFE_FRAC_PI_2;
+        } else if camera.pitch > SAFE_FRAC_PI_2 {
+            camera.pitch = SAFE_FRAC_PI_2;
+        }
+    }
+
+    pub fn handle_window_event(&mut self, event: &WindowEvent) {
+        use WindowEvent::*;
+
+        match event {
+            KeyboardInput {
+                event:
+                    KeyEvent {
+                        physical_key: PhysicalKey::Code(key_code),
+                        state,
+                        ..
+                    },
+                ..
+            } => {
+                self.process_keyboard(*key_code, *state);
+            }
+            MouseWheel { delta, .. } => {
+                self.process_scroll(delta);
+            }
+            _ => {}
+        }
+    }
+}
+
+impl IController for Arc<RwLock<FpsController>> {
+    fn input(&self, event: &Event<()>) {
+        use winit::event::DeviceEvent::*;
+        use Event::*;
+        let mut controller = self.write().unwrap();
+
+        match event {
+            DeviceEvent {
+                event,
+                ..
+            } => {
+                    match event {
+                        MouseMotion { delta } => {
+                            controller.process_mouse(delta.0, delta.1);
+                        }
+                        _ => {
+
+                        }
+                    }
+                },
+            _ => {
+
+            }
         }
     }
 }
