@@ -1,5 +1,5 @@
 use std::sync::{Arc, RwLock};
-use std::{f32::consts::FRAC_PI_2, time::Duration};
+use std::{f64::consts::FRAC_PI_2, time::Duration};
 
 use winit::event::{Event, MouseButton};
 use winit::{
@@ -10,26 +10,26 @@ use winit::{
 
 use super::{ICamera, IController};
 
-const SAFE_FRAC_PI_2: f32 = FRAC_PI_2 - 0.001;
+const SAFE_FRAC_PI_2: f64 = FRAC_PI_2 - 0.001;
 
 pub struct FpsCamera {
-    positon: na::Point3<f32>,
-    yaw: f32,
-    pitch: f32,
+    positon: na::Point3<f64>,
+    yaw: f64,
+    pitch: f64,
 }
 
 pub struct FpsController {
-    amount_left: f32,
-    amount_right: f32,
-    amount_forward: f32,
-    amount_backward: f32,
-    amount_up: f32,
-    amount_down: f32,
+    amount_left: f64,
+    amount_right: f64,
+    amount_forward: f64,
+    amount_backward: f64,
+    amount_up: f64,
+    amount_down: f64,
     rotate_horizontal: f64,
     rotate_vertical: f64,
-    scroll: f32,
-    speed: f32,
-    sensitivity: f32,
+    scroll: f64,
+    speed: f64,
+    sensitivity: f64,
 }
 
 impl Default for FpsController {
@@ -39,7 +39,7 @@ impl Default for FpsController {
 }
 
 impl FpsController {
-    pub fn new(speed: f32, sensitivity: f32) -> Self {
+    pub fn new(speed: f64, sensitivity: f64) -> Self {
         Self {
             amount_left: 0.0,
             amount_right: 0.0,
@@ -87,13 +87,13 @@ impl FpsController {
     pub fn process_scroll(&mut self, mouse_delta: &MouseScrollDelta) {
         use MouseScrollDelta::*;
         self.scroll = -match mouse_delta {
-            LineDelta(_, scroll) => scroll * 100.0,
-            PixelDelta(PhysicalPosition { y: scroll, .. }) => *scroll as f32,
+            LineDelta(_, scroll) => (scroll * 100.0).into(),
+            PixelDelta(PhysicalPosition { y: scroll, .. }) => *scroll,
         }
     }
 
     pub fn update_camera(&mut self, camera: &mut FpsCamera, dt: Duration) {
-        let dt = dt.as_secs_f32();
+        let dt = dt.as_secs_f64();
         let (yaw_sin, yaw_cos) = camera.yaw.sin_cos();
         let forward = na::Vector3::new(yaw_cos, 0.0, yaw_sin).normalize();
         let right = na::Vector3::new(-yaw_sin, 0.0, yaw_cos).normalize();
