@@ -22,6 +22,7 @@ tobj = { version = "3.2.1", features = [
     "async",
 ]}
  futures = "0.3.30"
+ transform-gizmo-egui = "0.1.0"
 [dependencies.image]
 version = "0.24"
 default-features = false

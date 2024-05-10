@@ -13,6 +13,12 @@ pub struct StaticCamera {
     pub up: na::Vector3<f32>,
 }
 
+impl Default for StaticCamera {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StaticCamera {
     pub fn new() -> Self {
         StaticCamera {

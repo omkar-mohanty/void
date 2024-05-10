@@ -5,13 +5,13 @@ use std::{
 };
 
 use crate::{
-    camera::CameraController,
+    camera::{CameraController, StaticCamera},
     gpu::Gpu,
-    gui::void_gui,
     io::{GuiRenderer, IoEngine, Ui},
     model, resource, texture, ModelEntry, Renderer, Resources,
 };
-use egui::Context;
+use egui::{Align2, Context};
+use transform_gizmo_egui::*;
 use wgpu::util::DeviceExt;
 use winit::{
     event::*,
@@ -28,11 +28,29 @@ pub struct App {
 }
 
 #[derive(Default)]
-struct Gui {}
+struct Gui {
+    gizmo: Gizmo,
+    camera: Arc<RwLock<StaticCamera>>,
+}
+
+impl Gui {
+    pub fn new(camera: Arc<RwLock<StaticCamera>>) -> Self {
+        let gizmo = Gizmo::default();
+        Self { gizmo, camera }
+    }
+}
 
 impl Ui for Gui {
-    fn render_ui(&mut self, context: &Context) {
-        void_gui(context);
+    fn render_ui(&mut self, ctx: &Context) {
+        egui::Window::new("Control Plane")
+            .default_open(true)
+            .resizable(true)
+            .anchor(Align2::LEFT_TOP, [0.0, 0.0])
+            .show(ctx, |ui| {
+                if ui.add(egui::Button::new("Clicked")).clicked() {
+                    println!("Clicked");
+                }
+            });
     }
 }
 
@@ -44,11 +62,13 @@ impl App {
         let gui = Gui::default();
 
         let controller = Arc::new(RwLock::new(CameraController::default()));
+        let camera = Arc::new(RwLock::new(StaticCamera::new()));
 
         let renderer = Renderer::new(
             Arc::clone(&window),
             Arc::clone(&gpu),
             Arc::clone(&controller),
+            Arc::clone(&camera),
         )
         .await;
 

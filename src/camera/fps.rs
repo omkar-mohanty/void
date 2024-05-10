@@ -150,22 +150,13 @@ impl IController for Arc<RwLock<FpsController>> {
         let mut controller = self.write().unwrap();
 
         match event {
-            DeviceEvent {
-                event,
-                ..
-            } => {
-                    match event {
-                        MouseMotion { delta } => {
-                            controller.process_mouse(delta.0, delta.1);
-                        }
-                        _ => {
-
-                        }
-                    }
-                },
-            _ => {
-
-            }
+            DeviceEvent { event, .. } => match event {
+                MouseMotion { delta } => {
+                    controller.process_mouse(delta.0, delta.1);
+                }
+                _ => {}
+            },
+            _ => {}
         }
     }
 }

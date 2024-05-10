@@ -139,7 +139,7 @@ struct Renderer {
     camera_controller: Arc<RwLock<CameraController>>,
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
-    camera: StaticCamera,
+    camera: Arc<RwLock<StaticCamera>>,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: Id,
@@ -156,6 +156,7 @@ impl Renderer {
         window: Arc<Window>,
         gpu: Arc<Gpu>,
         camera_controller: Arc<RwLock<CameraController>>,
+        static_camera: Arc<RwLock<StaticCamera>>,
     ) -> Self {
         let device = &gpu.device;
 
@@ -186,11 +187,11 @@ impl Renderer {
                 ],
             });
 
-        let camera = StaticCamera::new();
-
         let mut camera_uniform = CameraUniform::new();
+        let camera = static_camera.read().unwrap();
         let projection = Projection::with_aspect(size.width as f32, size.height as f32);
-        camera_uniform.update_view_projection(&projection, &camera);
+        camera_uniform.update_view_projection(&projection, &*camera);
+        drop(camera);
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
@@ -319,7 +320,7 @@ impl Renderer {
             size,
             render_pipeline,
             window,
-            camera,
+            camera: static_camera,
             camera_uniform,
             camera_bind_group,
             camera_buffer,
@@ -364,10 +365,11 @@ impl Renderer {
     }
 
     fn update(&mut self) {
+        let mut camera = self.camera.write().unwrap();
         self.camera_controller
             .write()
             .unwrap()
-            .update_camera(&mut self.camera);
+            .update_camera(&mut *camera);
 
         let (width, height) = self
             .gpu
@@ -376,7 +378,7 @@ impl Renderer {
         let projection = Projection::with_aspect(width, height);
 
         self.camera_uniform
-            .update_view_projection(&projection, &self.camera);
+            .update_view_projection(&projection, &mut *camera);
 
         // Update the light
         let old_position: nalgebra::Vector3<_> = self.light_uniform.position.into();
