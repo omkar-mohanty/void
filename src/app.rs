@@ -38,6 +38,10 @@ impl Gui {
         let gizmo = Gizmo::default();
         Self { gizmo, camera }
     }
+
+    pub fn update_gizmo(&mut self) {
+        todo!("Update Gizmo")
+    }
 }
 
 impl Ui for Gui {
