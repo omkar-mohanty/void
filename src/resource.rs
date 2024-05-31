@@ -119,7 +119,7 @@ pub async fn load_model(
         .into_iter()
         .map(|m| {
             let vertices = (0..m.mesh.positions.len() / 3)
-                .map(|i| model::ModelVertex {
+                .map(|i| model::TexModelVertex {
                     position: [
                         m.mesh.positions[i * 3],
                         m.mesh.positions[i * 3 + 1],

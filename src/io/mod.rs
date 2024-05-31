@@ -19,6 +19,8 @@ use wgpu::TextureFormat;
 use winit::event::{KeyEvent, WindowEvent};
 use winit::window::Window;
 
+pub mod fs;
+
 pub trait Controller {
     fn process_events(&self, ctx: &KeyEvent);
 }

@@ -12,7 +12,7 @@ mod resource;
 mod texture;
 
 use crate::db::Id;
-use crate::model::{InstanceRaw, ModelVertex, Vertex};
+use crate::model::{InstanceRaw, TexModelVertex, Vertex};
 
 use camera::{CameraController, CameraUniform, Projection, StaticCamera};
 use db::DB;
@@ -277,7 +277,7 @@ impl Renderer {
                 &gpu,
                 &layout,
                 Some(texture::Texture::DEPTH_FORMAT),
-                &[ModelVertex::desc()],
+                &[TexModelVertex::desc()],
                 shader,
             )
         };
@@ -302,7 +302,7 @@ impl Renderer {
                 &gpu,
                 &render_pipeline_layout,
                 Some(texture::Texture::DEPTH_FORMAT),
-                &[model::ModelVertex::desc(), InstanceRaw::desc()],
+                &[model::TexModelVertex::desc(), InstanceRaw::desc()],
                 shader,
             )
         };
