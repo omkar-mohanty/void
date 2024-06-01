@@ -40,7 +40,6 @@ pub struct InstanceRaw {
     normal: [[f32; 3]; 3],
 }
 
-// NEW!
 impl Instance {
     pub fn to_raw(&self) -> InstanceRaw {
         let model = self.isometry.to_matrix().into();
@@ -111,7 +110,6 @@ impl Vertex for InstanceRaw {
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ModelVertex {
     pub position: [f32; 3],
-    pub color: [f32; 4],
     pub normal: [f32; 3],
 }
 
@@ -128,15 +126,10 @@ impl Vertex for ModelVertex {
                     shader_location: 0,
                 },
                 wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x4,
+                    format: wgpu::VertexFormat::Float32x3,
                     offset: mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     shader_location: 1,
                 },
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x3,
-                    offset: mem::size_of::<[f32; 5]>() as wgpu::BufferAddress,
-                    shader_location: 2,
-                }
             ],
         }
     }

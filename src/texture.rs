@@ -1,7 +1,7 @@
-use anyhow::*;
-use image::GenericImageView;
-
 use crate::gpu::Gpu;
+use anyhow::*;
+use image::{DynamicImage, GenericImageView};
+use image::{ImageBuffer, Rgba};
 
 pub struct Texture {
     pub texture: wgpu::Texture,
@@ -39,6 +39,28 @@ impl Texture {
         let device = &gpu.device;
         device.create_bind_group_layout(&Self::BIND_GROUP_LAYOUT_DESCRIPTOR)
     }
+
+    fn create_default_texture() -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+        let width = 512;
+        let height = 512;
+        let mut imgbuf = ImageBuffer::new(width, height);
+
+        for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
+            let r = (x % 256) as u8;
+            let g = (y % 256) as u8;
+            let b = ((x + y) % 256) as u8;
+            *pixel = image::Rgba([r, g, b, 255]);
+        }
+
+        imgbuf
+    }
+
+    pub fn default_texture(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<Self> {
+        let img_buffer = Self::create_default_texture();
+        let img = DynamicImage::ImageRgba8(img_buffer);
+        Self::from_image(device, queue, &img, Some("Default texture"))
+    }
+
     pub fn from_bytes(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
