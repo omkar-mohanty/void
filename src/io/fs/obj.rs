@@ -57,6 +57,12 @@ pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
 
 pub struct ObjFile {}
 
+impl ObjFile {
+    pub fn new(_path: PathBuf) -> Self {
+        todo!("Implement Obj file")
+    }
+}
+
 async fn get_models(
     gpu: &Gpu,
     file_name: &str,
@@ -111,7 +117,7 @@ async fn get_models(
         .into_iter()
         .map(|m| {
             let vertices = (0..m.mesh.positions.len() / 3)
-                .map(|i| model::TexModelVertex {
+                .map(|i| model::ModelVertex {
                     position: [
                         m.mesh.positions[i * 3],
                         m.mesh.positions[i * 3 + 1],
@@ -149,10 +155,4 @@ async fn get_models(
         .collect::<Vec<_>>();
 
     Ok(model::Model { meshes, materials })
-}
-
-impl ObjFile {
-    pub fn new(path: PathBuf) -> Self {
-        todo!()
-    }
 }

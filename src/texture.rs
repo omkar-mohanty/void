@@ -1,7 +1,13 @@
+use std::ops::RangeInclusive;
+
 use crate::gpu::Gpu;
 use anyhow::*;
 use image::{DynamicImage, GenericImageView};
 use image::{ImageBuffer, Rgba};
+use rand::Rng;
+
+const WHITE: [u8; 4] = [255, 255, 255, 255];
+const BRIGHT_RANGE: RangeInclusive<u8> = 124..=255;
 
 pub struct Texture {
     pub texture: wgpu::Texture,
@@ -40,16 +46,36 @@ impl Texture {
         device.create_bind_group_layout(&Self::BIND_GROUP_LAYOUT_DESCRIPTOR)
     }
 
+    fn create_random_texture() -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+        let width = 512;
+        let height = 512;
+
+        let mut rng = rand::thread_rng();
+
+        let r = rng.gen_range(BRIGHT_RANGE);
+        let g = rng.gen_range(BRIGHT_RANGE);
+        let b = rng.gen_range(BRIGHT_RANGE);
+        let a = rng.gen_range(BRIGHT_RANGE);
+
+        let color_rgba = [r, g, b , a];
+
+        let mut imgbuf = ImageBuffer::new(width, height);
+
+        for (_, _, pixel) in imgbuf.enumerate_pixels_mut() {
+            *pixel = Rgba(color_rgba);
+        }
+
+        imgbuf
+    }
+
+    #[allow(unused)]
     fn create_default_texture() -> ImageBuffer<Rgba<u8>, Vec<u8>> {
         let width = 512;
         let height = 512;
         let mut imgbuf = ImageBuffer::new(width, height);
 
-        for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
-            let r = (x % 256) as u8;
-            let g = (y % 256) as u8;
-            let b = ((x + y) % 256) as u8;
-            *pixel = image::Rgba([r, g, b, 255]);
+        for (_, _, pixel) in imgbuf.enumerate_pixels_mut() {
+            *pixel = Rgba(WHITE);
         }
 
         imgbuf
@@ -57,6 +83,12 @@ impl Texture {
 
     pub fn default_texture(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<Self> {
         let img_buffer = Self::create_default_texture();
+        let img = DynamicImage::ImageRgba8(img_buffer);
+        Self::from_image(device, queue, &img, Some("Default texture"))
+    }
+
+    pub fn random_texture(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<Self> {
+        let img_buffer = Self::create_random_texture();
         let img = DynamicImage::ImageRgba8(img_buffer);
         Self::from_image(device, queue, &img, Some("Default texture"))
     }

@@ -11,7 +11,7 @@ use stl::*;
 pub trait IMeshFile {
     fn get_vertices(&self) -> Result<Vec<model::ModelVertex>>;
     fn get_indices(&self) -> Result<Vec<u32>>;
-    fn get_tex_coordinates(&self) -> Result<Vec<[f32; 2]>>;
+    fn get_uv(&self, vertex: &[f32; 3]) -> [f32; 2];
 }
 
 pub struct MeshFile {
@@ -49,8 +49,8 @@ impl IMeshFile for MeshFile {
     fn get_vertices(&self) -> Result<Vec<model::ModelVertex>> {
         self.inner.get_vertices()
     }
-    fn get_tex_coordinates(&self) -> Result<Vec<[f32; 2]>> {
-        self.inner.get_tex_coordinates()
+    fn get_uv(&self, vertex: &[f32; 3]) -> [f32; 2] {
+        self.inner.get_uv(vertex)
     }
     fn get_indices(&self) -> Result<Vec<u32>> {
         self.inner.get_indices()

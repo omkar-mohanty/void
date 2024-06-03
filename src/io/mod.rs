@@ -61,7 +61,7 @@ impl<T: Controller> IoEngine<T> {
     pub fn handle_event(&mut self, event: &WindowEvent) {
         use WindowEvent::*;
         match event {
-            DroppedFile(path) => match futures::executor::block_on(self.add_model(path)) {
+            DroppedFile(path) => match futures::executor::block_on(self.handle_file_drop(path)) {
                 Ok(()) => log::info!("Added Model"),
                 Err(msg) => log::error!("{msg}"),
             },
@@ -74,10 +74,28 @@ impl<T: Controller> IoEngine<T> {
         self.gui.handle_input(&self.window, event);
     }
 
+    async fn handle_file_drop(&mut self, path: &PathBuf) -> anyhow::Result<()> {
+        if path.is_dir() {
+            let dir = std::fs::read_dir(path)?;
+
+            for entry in dir {
+                let entry = entry?;
+                let path = entry.path();
+
+                self.add_model(&path).await?;
+            }
+
+            return Ok(());
+        }
+
+        self.add_model(&path).await?;
+
+        Ok(())
+    }
+
     pub async fn add_model(&mut self, path: &PathBuf) -> anyhow::Result<()> {
-        let path_string = path.display().to_string();
         let layout = texture::Texture::get_bind_group_layout(&self.gpu);
-        let model = resource::load_model(&path_string, &self.gpu, &layout).await?;
+        let model = resource::load_model(path.to_path_buf(), &self.gpu, &layout).await?;
         let mut model_db = self.resources.model_db.write().unwrap();
         let device = &self.gpu.device;
         let instances = vec![model::Instance::default()];

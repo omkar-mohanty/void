@@ -1,5 +1,5 @@
 use na::Matrix4;
-use winit::event::{Event, WindowEvent};
+use winit::event::Event;
 
 mod camera;
 mod fps;

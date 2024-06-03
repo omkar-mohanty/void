@@ -24,6 +24,7 @@ tobj = { version = "3.2.1", features = [
  futures = "0.3.30"
  transform-gizmo-egui = "0.1.0"
  stl_io = "0.7.0"
+ rand = "0.8.5"
 [dependencies.image]
 version = "0.24"
 default-features = false

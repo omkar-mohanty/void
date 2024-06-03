@@ -12,7 +12,7 @@ mod resource;
 mod texture;
 
 use crate::db::Id;
-use crate::model::{InstanceRaw, TexModelVertex, Vertex};
+use crate::model::{InstanceRaw, ModelVertex, Vertex};
 
 use camera::{CameraController, CameraUniform, Projection, StaticCamera};
 use db::DB;
@@ -277,7 +277,7 @@ impl Renderer {
                 &gpu,
                 &layout,
                 Some(texture::Texture::DEPTH_FORMAT),
-                &[TexModelVertex::desc()],
+                &[ModelVertex::desc()],
                 shader,
             )
         };
@@ -302,7 +302,7 @@ impl Renderer {
                 &gpu,
                 &render_pipeline_layout,
                 Some(texture::Texture::DEPTH_FORMAT),
-                &[model::TexModelVertex::desc(), InstanceRaw::desc()],
+                &[model::ModelVertex::desc(), InstanceRaw::desc()],
                 shader,
             )
         };
@@ -451,8 +451,8 @@ impl Renderer {
                 let instances = &entry.instances;
                 let instane_buffer = &entry.instance_buffer;
 
-                render_pass.set_pipeline(&self.light_render_pipeline);
-                render_pass.draw_light_model(model, camera_bind_group, &self.light_bind_group);
+                //render_pass.set_pipeline(&self.light_render_pipeline);
+                //render_pass.draw_light_model(model, camera_bind_group, &self.light_bind_group);
 
                 render_pass.set_pipeline(&self.render_pipeline);
                 render_pass.set_vertex_buffer(1, instane_buffer.slice(..));

@@ -49,12 +49,7 @@ impl Ui for Gui {
         egui::Window::new("Control Plane")
             .default_open(true)
             .resizable(true)
-            .anchor(Align2::LEFT_TOP, [0.0, 0.0])
-            .show(ctx, |ui| {
-                if ui.add(egui::Button::new("Clicked")).clicked() {
-                    println!("Clicked");
-                }
-            });
+            .show(ctx, |ui| if ui.button("Open Asset folder").clicked() {});
     }
 }
 
@@ -95,9 +90,8 @@ impl App {
     }
 
     pub async fn handle_file_drop(&mut self, path: &PathBuf) -> anyhow::Result<()> {
-        let path_string = path.display().to_string();
         let layout = texture::Texture::get_bind_group_layout(&self.gpu);
-        let model = resource::load_model(&path_string, &self.gpu, &layout).await?;
+        let model = resource::load_model(path.to_path_buf(), &self.gpu, &layout).await?;
         let mut model_db = self.resources.model_db.write().unwrap();
         let device = &self.gpu.device;
         let instances = vec![model::Instance::default()];
@@ -162,12 +156,6 @@ impl App {
                             };
                             self.io_engine.render();
                             self.gpu.finish();
-                        }
-                        WindowEvent::DroppedFile(path) => {
-                            match futures::executor::block_on(self.handle_file_drop(path)) {
-                                Ok(()) => log::info!("Model Added"),
-                                Err(err) => log::error!("Model Could not be added : {err}"),
-                            }
                         }
                         _ => {
                             log::info!("Other");
