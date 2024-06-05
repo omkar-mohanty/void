@@ -5,6 +5,7 @@ mod camera;
 mod db;
 pub mod gpu;
 mod gui;
+mod hdr;
 mod io;
 mod light;
 mod model;
@@ -27,20 +28,19 @@ use wgpu::util::DeviceExt;
 use winit::{event::*, window::Window};
 
 fn create_render_pipeline(
-    gpu: &Gpu,
+    device: &Gpu,
     layout: &wgpu::PipelineLayout,
+    color_format: wgpu::TextureFormat,
     depth_format: Option<wgpu::TextureFormat>,
     vertex_layouts: &[wgpu::VertexBufferLayout],
+    topology: wgpu::PrimitiveTopology, // NEW!
     shader: wgpu::ShaderModuleDescriptor,
 ) -> wgpu::RenderPipeline {
-    let device = &gpu.device;
+    let device = &device.device;
     let shader = device.create_shader_module(shader);
-    let config = gpu.get_config();
-
-    let color_format = config.format;
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("Render Pipeline"),
+        label: Some(&format!("{:?}", shader)),
         layout: Some(layout),
         vertex: wgpu::VertexState {
             module: &shader,
@@ -52,15 +52,12 @@ fn create_render_pipeline(
             entry_point: "fs_main",
             targets: &[Some(wgpu::ColorTargetState {
                 format: color_format,
-                blend: Some(wgpu::BlendState {
-                    alpha: wgpu::BlendComponent::REPLACE,
-                    color: wgpu::BlendComponent::REPLACE,
-                }),
+                blend: None,
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),
         primitive: wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList,
+            topology, // NEW!
             strip_index_format: None,
             front_face: wgpu::FrontFace::Ccw,
             cull_mode: Some(wgpu::Face::Back),
@@ -74,7 +71,7 @@ fn create_render_pipeline(
         depth_stencil: depth_format.map(|format| wgpu::DepthStencilState {
             format,
             depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::Less,
+            depth_compare: wgpu::CompareFunction::LessEqual, // UDPATED!
             stencil: wgpu::StencilState::default(),
             bias: wgpu::DepthBiasState::default(),
         }),
@@ -83,6 +80,8 @@ fn create_render_pipeline(
             mask: !0,
             alpha_to_coverage_enabled: false,
         },
+        // If the pipeline will be used with a multiview render pass, this
+        // indicates how many array layers the attachments will have.
         multiview: None,
     })
 }
@@ -148,6 +147,7 @@ struct Renderer {
     light_buffer: wgpu::Buffer,
     light_bind_group: wgpu::BindGroup,
     light_render_pipeline: wgpu::RenderPipeline,
+    hdr: hdr::HdrPipeline,
     bind_group_db: BindGroupDB,
 }
 
@@ -230,6 +230,8 @@ impl Renderer {
             _paddding: 0,
         };
 
+        let hdr = hdr::HdrPipeline::new(&gpu);
+
         let light_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Light V8"),
             contents: bytemuck::cast_slice(&[light_uniform]),
@@ -276,8 +278,10 @@ impl Renderer {
             create_render_pipeline(
                 &gpu,
                 &layout,
+                hdr.format(),
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[ModelVertex::desc()],
+                wgpu::PrimitiveTopology::TriangleList,
                 shader,
             )
         };
@@ -301,8 +305,10 @@ impl Renderer {
             create_render_pipeline(
                 &gpu,
                 &render_pipeline_layout,
+                hdr.format(),
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[model::ModelVertex::desc(), InstanceRaw::desc()],
+                wgpu::PrimitiveTopology::TriangleList,
                 shader,
             )
         };
@@ -317,6 +323,7 @@ impl Renderer {
         Self {
             gpu,
             depth_texture,
+            hdr,
             size,
             render_pipeline,
             window,
@@ -355,6 +362,8 @@ impl Renderer {
                 &config_write,
                 "depth_texture",
             ));
+            self.hdr
+                .resize(&self.gpu, self.size.width, self.size.height);
         }
     }
 
@@ -427,7 +436,7 @@ impl Renderer {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view: self.hdr.view(),
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
@@ -465,6 +474,8 @@ impl Renderer {
                 )
             }
         }
+
+        self.hdr.process(&mut encoder, &view);
 
         self.gpu.submit_cmd(encoder.finish());
         Ok(())

@@ -58,7 +58,7 @@ pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
 pub struct ObjFile {}
 
 impl ObjFile {
-    pub fn new(_path: PathBuf) -> Self {
+    pub fn new(_path: PathBuf) -> Result<Self> {
         todo!("Implement Obj file")
     }
 }

@@ -94,8 +94,7 @@ impl<T: Controller> IoEngine<T> {
     }
 
     pub async fn add_model(&mut self, path: &PathBuf) -> anyhow::Result<()> {
-        let layout = texture::Texture::get_bind_group_layout(&self.gpu);
-        let model = resource::load_model(path.to_path_buf(), &self.gpu, &layout).await?;
+        let model = resource::load_model(path.to_path_buf(), &self.gpu).await?;
         let mut model_db = self.resources.model_db.write().unwrap();
         let device = &self.gpu.device;
         let instances = vec![model::Instance::default()];

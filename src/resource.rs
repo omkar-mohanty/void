@@ -9,7 +9,6 @@ use wgpu::util::DeviceExt;
 pub async fn load_model(
     path: PathBuf,
     gpu: &Gpu,
-    layout: &wgpu::BindGroupLayout,
 ) -> anyhow::Result<model::Model> {
     let (device, queue) = (&gpu.device, &gpu.queue);
     let file_name = path.display().to_string();
@@ -20,20 +19,7 @@ pub async fn load_model(
 
     let default_texture = texture::Texture::random_texture(device, queue)?;
 
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: None,
-        layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&default_texture.view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::Sampler(&default_texture.sampler),
-            },
-        ],
-    });
+    let bind_group = texture::Texture::load(gpu, &default_texture);
 
     let materials = vec![model::Material {
         bind_group,

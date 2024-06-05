@@ -12,7 +12,6 @@ pub struct StlFile {
 impl StlFile {
     pub fn new(path: &PathBuf) -> Result<Self> {
         let mut file = OpenOptions::new().read(true).open(&path)?;
-
         let mesh = stl_io::read_stl(&mut file)?;
         Ok(Self { mesh })
     }

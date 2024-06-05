@@ -14,6 +14,7 @@ pub trait IMeshFile {
     fn get_uv(&self, vertex: &[f32; 3]) -> [f32; 2];
 }
 
+/// Supported formats obj, stl.
 pub struct MeshFile {
     inner: Box<dyn IMeshFile>,
 }
