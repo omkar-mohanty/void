@@ -27,8 +27,9 @@ use texture::Texture;
 use wgpu::util::DeviceExt;
 use winit::{event::*, window::Window};
 
+
 fn create_render_pipeline(
-    device: &Gpu,
+    gpu: &Gpu,
     layout: &wgpu::PipelineLayout,
     color_format: wgpu::TextureFormat,
     depth_format: Option<wgpu::TextureFormat>,
@@ -36,7 +37,7 @@ fn create_render_pipeline(
     topology: wgpu::PrimitiveTopology, // NEW!
     shader: wgpu::ShaderModuleDescriptor,
 ) -> wgpu::RenderPipeline {
-    let device = &device.device;
+    let device = &gpu.device;
     let shader = device.create_shader_module(shader);
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -85,6 +86,7 @@ fn create_render_pipeline(
         multiview: None,
     })
 }
+
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -149,6 +151,7 @@ struct Renderer {
     light_render_pipeline: wgpu::RenderPipeline,
     hdr: hdr::HdrPipeline,
     bind_group_db: BindGroupDB,
+    envoronment_bind_group: wgpu::BindGroup,
 }
 
 impl Renderer {
@@ -343,6 +346,25 @@ impl Renderer {
             ],
         });
 
+        // NEW!
+        let sky_pipeline = {
+            let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Sky Pipeline Layout"),
+                bind_group_layouts: &[&camera_bind_group_layout, &environment_layout],
+                push_constant_ranges: &[],
+            });
+            let shader = wgpu::include_wgsl!("sky.wgsl");
+            create_render_pipeline(
+                &gpu,
+                &layout,
+                hdr.format(),
+                Some(texture::Texture::DEPTH_FORMAT),
+                &[],
+                wgpu::PrimitiveTopology::TriangleList,
+                shader,
+            )
+        };
+
         let render_pipeline = {
             let shader = wgpu::ShaderModuleDescriptor {
                 label: Some("Normal Shader"),
@@ -367,6 +389,7 @@ impl Renderer {
         });
 
         Self {
+            envoronment_bind_group: environment_bind_group,
             gpu,
             depth_texture,
             hdr,
