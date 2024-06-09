@@ -28,7 +28,7 @@ tobj = { version = "3.2.1", features = [
 [dependencies.image]
 version = "0.24"
 default-features = false
-features = ["png", "jpeg"]
+features = ["png", "jpeg", "hdr"]
 [profile.dev]
 opt-level = 1
 
