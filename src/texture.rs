@@ -49,15 +49,15 @@ impl Texture {
             label: None,
             layout: &layout,
             entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&texture.view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::Sampler(&texture.sampler),
-            },
-        ],
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&texture.sampler),
+                },
+            ],
         })
     }
     pub fn create_texture(
@@ -297,7 +297,6 @@ impl Texture {
     }
 }
 
-
 pub struct CubeTexture {
     texture: wgpu::Texture,
     sampler: wgpu::Sampler,
@@ -356,10 +355,15 @@ impl CubeTexture {
         }
     }
 
-    pub fn texture(&self) -> &wgpu::Texture { &self.texture }
-    
-    pub fn view(&self) -> &wgpu::TextureView { &self.view }
+    pub fn texture(&self) -> &wgpu::Texture {
+        &self.texture
+    }
 
-    pub fn sampler(&self) -> &wgpu::Sampler { &self.sampler }
+    pub fn view(&self) -> &wgpu::TextureView {
+        &self.view
+    }
 
+    pub fn sampler(&self) -> &wgpu::Sampler {
+        &self.sampler
+    }
 }

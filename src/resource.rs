@@ -3,14 +3,17 @@ use crate::{
     io::fs::{IMeshFile, MeshFile},
     model, texture,
 };
-use std::{path::PathBuf, io::Cursor};
-use wgpu::util::DeviceExt;
 use image::codecs::hdr::HdrDecoder;
+use std::{io::Cursor, path::PathBuf};
+use wgpu::util::DeviceExt;
 
-pub async fn load_model(
-    path: PathBuf,
-    gpu: &Gpu,
-) -> anyhow::Result<model::Model> {
+pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
+    let path = std::path::Path::new("./").join("models").join(file_name);
+    let data = std::fs::read(path)?;
+    Ok(data)
+}
+
+pub async fn load_model(path: PathBuf, gpu: &Gpu) -> anyhow::Result<model::Model> {
     let (device, queue) = (&gpu.device, &gpu.queue);
     let file_name = path.display().to_string();
     let mesh_file = MeshFile::new(path)?;
@@ -111,16 +114,16 @@ impl HdrLoader {
     pub fn from_equirectangular_bytes(
         &self,
         gpu: &Gpu,
-        queue: &wgpu::Queue,
         data: &[u8],
         dst_size: u32,
         label: Option<&str>,
     ) -> anyhow::Result<texture::CubeTexture> {
         let device = &gpu.device;
+        let queue = &gpu.queue;
         let hdr_decoder = HdrDecoder::new(Cursor::new(data))?;
         let meta = hdr_decoder.metadata();
-        
-        #[cfg(not(target_arch="wasm32"))]
+
+        #[cfg(not(target_arch = "wasm32"))]
         let pixels = {
             let mut pixels = vec![[0.0, 0.0, 0.0, 0.0]; meta.width as usize * meta.height as usize];
             hdr_decoder.read_image_transform(
@@ -132,8 +135,9 @@ impl HdrLoader {
             )?;
             pixels
         };
-        #[cfg(target_arch="wasm32")]
-        let pixels = hdr_decoder.read_image_native()?
+        #[cfg(target_arch = "wasm32")]
+        let pixels = hdr_decoder
+            .read_image_native()?
             .into_iter()
             .map(|pix| {
                 let rgb = pix.to_hdr();
@@ -175,8 +179,7 @@ impl HdrLoader {
             1,
             // We are going to write to `dst` texture so we
             // need to use a `STORAGE_BINDING`.
-            wgpu::TextureUsages::STORAGE_BINDING
-                | wgpu::TextureUsages::TEXTURE_BINDING,
+            wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
             wgpu::FilterMode::Nearest,
             label,
         );
@@ -208,7 +211,7 @@ impl HdrLoader {
         });
 
         let mut encoder = device.create_command_encoder(&Default::default());
-        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default() );
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
 
         let num_workgroups = (dst_size + 15) / 16;
         pass.set_pipeline(&self.equirect_to_cubemap);
@@ -222,4 +225,3 @@ impl HdrLoader {
         Ok(dst)
     }
 }
-
