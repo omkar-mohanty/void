@@ -24,7 +24,7 @@ use model::DrawLight;
 use model::DrawModel;
 use std::sync::{Arc, RwLock};
 use texture::Texture;
-use wgpu::util::DeviceExt;
+use wgpu::util::{DeviceExt, RenderEncoder};
 use winit::{event::*, window::Window};
 
 fn create_render_pipeline(
@@ -307,9 +307,6 @@ impl Renderer {
             .from_equirectangular_bytes(&gpu, &sky_bytes, 1080, Some("Sky Texture"))
             .unwrap();
 
-        // NEW!
-        
-
         let environment_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("environment_layout"),
@@ -527,6 +524,8 @@ impl Renderer {
                 timestamp_writes: None,
             });
 
+            
+
             for entry in models {
                 let model = &entry.model;
                 let instances = &entry.instances;
@@ -545,6 +544,11 @@ impl Renderer {
                     &self.light_bind_group,
                 )
             }
+
+            render_pass.set_pipeline(&self.sky_pipeline);
+            render_pass.set_bind_group(0, &camera_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.envoronment_bind_group, &[]);
+            render_pass.draw(0..3, 0..1);
         }
 
         self.hdr.process(&mut encoder, &view);
