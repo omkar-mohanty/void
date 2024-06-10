@@ -27,7 +27,6 @@ use texture::Texture;
 use wgpu::util::DeviceExt;
 use winit::{event::*, window::Window};
 
-
 fn create_render_pipeline(
     gpu: &Gpu,
     layout: &wgpu::PipelineLayout,
@@ -86,7 +85,6 @@ fn create_render_pipeline(
         multiview: None,
     })
 }
-
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -152,6 +150,7 @@ struct Renderer {
     hdr: hdr::HdrPipeline,
     bind_group_db: BindGroupDB,
     envoronment_bind_group: wgpu::BindGroup,
+    sky_pipeline: wgpu::RenderPipeline,
 }
 
 impl Renderer {
@@ -308,6 +307,9 @@ impl Renderer {
             .from_equirectangular_bytes(&gpu, &sky_bytes, 1080, Some("Sky Texture"))
             .unwrap();
 
+        // NEW!
+        
+
         let environment_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("environment_layout"),
@@ -406,6 +408,7 @@ impl Renderer {
             light_render_pipeline,
             camera_controller,
             bind_group_db,
+            sky_pipeline,
         }
     }
 
