@@ -524,8 +524,6 @@ impl Renderer {
                 timestamp_writes: None,
             });
 
-            
-
             for entry in models {
                 let model = &entry.model;
                 let instances = &entry.instances;

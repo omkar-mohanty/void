@@ -1,0 +1,9 @@
+[package]
+name = "gpu"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+encase = "0.8.0"
+wgpu = "0.20.1"
+nalgebra = "0.32.6"
